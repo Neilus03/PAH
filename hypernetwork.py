@@ -13,47 +13,52 @@ from torchmeta.modules import MetaModule
 
 class HyperCMTL(nn.Module):
     def __init__(self,
-                 num_instances=1, 
+                 num_instances=1,
+                 backbone_layers=[32, 64, 128, 256, 512],  # Backbone architecture
+                 task_head_projection_size=64,             # Task head hidden layer size
+                 task_head_num_classes=2,                  # Task head output size
+                 hyper_hidden_features=256,                # Hypernetwork hidden layer size
+                 hyper_hidden_layers=2,                    # Hypernetwork number of layers
                  device='cuda',
-                 std=0.01,
-                 ):
+                 std=0.01):
         super().__init__()
 
         self.num_instances = num_instances
+        self.backbone_layers = backbone_layers
+        self.task_head_projection_size = task_head_projection_size
+        self.task_head_num_classes = task_head_num_classes
+        self.hyper_hidden_features = hyper_hidden_features
+        self.hyper_hidden_layers = hyper_hidden_layers
         self.device = device
-
         self.std = std
 
-        # video decomposition network
-        self.backbone = ConvBackbone(layers=[32, 64, 128, 256, 512], # list of conv layer num_kernels
-                                input_size=(1,32,32), # for grayscale images
-                                device=device)
+        # Video decomposition network (Backbone)
+        self.backbone = ConvBackbone(layers=backbone_layers,
+                                     input_size=(1, 32, 32),
+                                     device=device)
 
+        # Task head
         self.task_head = TaskHead(input_size=self.backbone.num_features,
-                                    projection_size=64,
-                                    num_classes=2,
-                                    dropout=0.5,
-                                    device=device)
+                                  projection_size=task_head_projection_size,
+                                  num_classes=task_head_num_classes,
+                                  dropout=0.5,
+                                  device=device)
 
-        ## hypernetwork
-        hn_in = 64
-
+        # Hypernetwork
+        hn_in = 64  # Input size for hypernetwork embedding
         self.hypernet = HyperNetwork(hyper_in_features=hn_in,
-                                     hyper_hidden_layers=2,
-                                     hyper_hidden_features=256,
-                                     hypo_module=self.task_head, 
+                                     hyper_hidden_layers=hyper_hidden_layers,
+                                     hyper_hidden_features=hyper_hidden_features,
+                                     hypo_module=self.task_head,
                                      activation='relu')
 
         self.hyper_emb = nn.Embedding(self.num_instances, hn_in)
         nn.init.normal_(self.hyper_emb.weight, mean=0, std=std)
 
     def get_params(self, task_idx):
-        # print(torch.LongTensor([task_idx]).to(self.device))
         z = self.hyper_emb(torch.LongTensor([task_idx]).to(self.device))
-        # print("z", z)
-        out = self.hypernet(z)
-        # print("out", out)
-        return out
+        return self.hypernet(z)
+
 
     def forward(self, support_set, task_idx, **kwargs):
         params = self.get_params(task_idx)
@@ -64,7 +69,16 @@ class HyperCMTL(nn.Module):
         return task_head_out.squeeze(0)
     
     def deepcopy(self, device='cuda'):
-        new_model = HyperCMTL(num_instances=self.num_instances, device=self.device, std=self.std)
+        new_model = HyperCMTL(
+            num_instances=self.num_instances,
+            backbone_layers=self.backbone_layers,
+            task_head_projection_size=self.task_head_projection_size,
+            task_head_num_classes=self.task_head_num_classes,
+            hyper_hidden_features=self.hyper_hidden_features,
+            hyper_hidden_layers=self.hyper_hidden_layers,
+            device=device,
+            std=0.01
+        ).to(device)
         new_model.load_state_dict(self.state_dict())
         return new_model.to(device)
     
@@ -83,7 +97,7 @@ class ConvBackbone(nn.Module):
     def __init__(self,
                  layers=[32, 64, 128, 256, 512], # list of conv layer num_kernels
                  input_size=(1,32,32), # for grayscale images
-                 device=device,
+                 device="cuda",
                 ):
         super().__init__()
 
@@ -130,7 +144,7 @@ class TaskHead(MetaModule):
                  projection_size: int,  # number of neurons in the hidden layer
                  num_classes: int,      # number of output neurons
                  dropout: float=0.,     # optional dropout rate to apply
-                 device=device):
+                 device="cuda"):
         super().__init__()
 
         self.projection = BatchLinear(input_size, projection_size)
@@ -163,7 +177,7 @@ class TaskHead(MetaModule):
 
 class MultitaskModel(nn.Module):
     def __init__(self, backbone: nn.Module,
-                 device=device):
+                 device="cuda"):
         super().__init__()
 
         self.backbone = backbone

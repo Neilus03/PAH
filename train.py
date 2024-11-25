@@ -35,7 +35,7 @@ TEST_FRAC = 0.05
 BATCH_SIZE = 256
 
 ### training hyperparameters:
-EPOCHS_PER_TIMESTEP = 1
+EPOCHS_PER_TIMESTEP = 5
 lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
@@ -63,8 +63,8 @@ for i, cl in enumerate(fmnist.classes):
     if i == len(fmnist.classes) - 1:
         break
     timestep_task_classes[i] = [fmnist.classes[i], fmnist.classes[i+1]]
-print(timestep_task_classes)
-exit(0)
+# print(timestep_task_classes)
+
 
 for i, cl in enumerate(fmnist.classes):
     logger.log(f'{i}: {cl}')
@@ -96,10 +96,30 @@ final_test_loader = datasets['final_test_loader']
 joint_train_loader = datasets['joint_train_loader']
 task_test_sets = datasets['task_test_sets']
 
+# Model configuration
+backbone_config = [64, 128, 256, 512]  # Smaller backbone
+task_head_projection_size = 128        # Larger hidden layer in task head
+hyper_hidden_features = 512            # Larger hypernetwork hidden layer size
+hyper_hidden_layers = 4                # Deeper hypernetwork
 
-model = HyperCMTL(num_instances=4, device=device, std=0.01).to(device)
+# Initialize the model with the new configurations
+model = HyperCMTL(
+    num_instances=len(timestep_task_classes),
+    backbone_layers=backbone_config,
+    task_head_projection_size=task_head_projection_size,
+    task_head_num_classes=2,
+    hyper_hidden_features=hyper_hidden_features,
+    hyper_hidden_layers=hyper_hidden_layers,
+    device=device,
+    std=0.01
+).to(device)
+
+# Log the model architecture and configuration
+logger.log(f'Model architecture: {model}')
+logger.log(f"Model initialized with backbone_config={backbone_config}, task_head_projection_size={task_head_projection_size}, hyper_hidden_features={hyper_hidden_features}, hyper_hidden_layers={hyper_hidden_layers}")
+
+# Initialize the previous model
 previous_model = None
-
 
 # Initialize optimizer and loss function:
 opt = torch.optim.AdamW(model.get_optimizer_list())
@@ -123,6 +143,8 @@ metrics = { 'train_losses': [],
           }
 
 prev_test_accs = []
+
+print("Starting training")
 
 with wandb.init(project='HyperCMTL', name='HyperCMTL') as run:
 
