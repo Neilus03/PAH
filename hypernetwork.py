@@ -12,6 +12,27 @@ from metamodules import FCBlock, BatchLinear, HyperNetwork, get_subdict
 from torchmeta.modules import MetaModule
 
 class HyperCMTL(nn.Module):
+    """
+    Hypernetwork-based Conditional Multi-Task Learning (HyperCMTL) model.
+
+    This model combines a convolutional backbone, a task-specific head, and a hypernetwork
+    to dynamically generate parameters for task-specific learning. It is designed for
+    applications requiring task conditioning, such as meta-learning or multi-task learning.
+
+    Args:
+        num_instances (int): Number of task instances to support (e.g., number of tasks).
+        device (str, optional): Device for computation ('cuda' or 'cpu'). Default is 'cuda'.
+        std (float, optional): Standard deviation for initializing the task embeddings. Default is 0.01.
+
+    Attributes:
+        num_instances (int): Number of task instances.
+        device (torch.device): Device for computation.
+        std (float): Standard deviation for embedding initialization.
+        backbone (ConvBackbone): Convolutional network for feature extraction.
+        task_head (TaskHead): Fully connected network for task-specific classification.
+        hypernet (HyperNetwork): Hypernetwork to generate parameters for the task head.
+        hyper_emb (nn.Embedding): Task-specific embeddings used as input to the hypernetwork.
+    """
     def __init__(self,
                  num_instances=1,
                  backbone_layers=[32, 64, 128, 256, 512],  # Backbone architecture

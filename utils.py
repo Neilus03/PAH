@@ -10,80 +10,95 @@ import wandb
 import io
 from PIL import Image
 
-def inspect_batch(images, # batch of images as torch tensors
-        labels=None,      # optional vector of ground truth label integers
-        predictions=None, # optional vector/matrix of model predictions
-        # display parameters:
-        class_names=None, # optional list or dict of class idxs to class name strings
-        title=None,       # optional title for entire plot
-        # figure display/sizing params:
-        center_title=True,
-        max_to_show=16,
-        num_cols = 4,
-        scale=1,
-        ):
-    """accepts a batch of images as a torch tensor or list of tensors,
-    and plots them in a grid for manual inspection.
-    optionally, you can supply ground truth labels
-    and/or model predictions, to display those as well."""
+def inspect_batch(images, labels=None, predictions=None, class_names=None, title=None,
+                  center_title=True, max_to_show=16, num_cols=4, scale=1):
+    """
+    Plots a batch of images in a grid for manual inspection. Optionally displays ground truth 
+    labels and/or model predictions.
 
-    max_to_show = min([max_to_show, len(images)]) # cap at number of images
+    Args:
+        images (torch.Tensor or list): Batch of images as a torch tensor or list of tensors. Each
+            image tensor should have shape (C, H, W).
+        labels (list, optional): Ground truth labels for the images. Defaults to None.
+        predictions (torch.Tensor or list, optional): Model predictions for the images. Defaults to None.
+        class_names (list or dict, optional): Class names for labels and predictions. Can be a list 
+            (index-to-name mapping) or a dict (name-to-index mapping). Defaults to None.
+        title (str, optional): Title for the plot. Defaults to None.
+        center_title (bool, optional): Whether to center the title. Defaults to True.
+        max_to_show (int, optional): Maximum number of images to show. Defaults to 16.
+        num_cols (int, optional): Number of columns in the grid. Defaults to 4.
+        scale (float, optional): Scale factor for figure size. Defaults to 1.
 
+    Returns:
+        None: Displays the grid of images using matplotlib.
+    """
+
+    # Ensure max_to_show does not exceed the number of available images
+    max_to_show = min(max_to_show, len(images))
     num_rows = int(np.ceil(max_to_show / num_cols))
 
-    # add extra figure height if needed for captions:
-    extra_height = (((labels is not None) or (predictions is not None)) * 0.2)
+    # Calculate additional figure height for captions if labels or predictions are provided
+    extra_height = 0.2 if (labels is not None or predictions is not None) else 0
 
+    # Determine figure dimensions
     fig_width = 2 * scale * num_cols
-    fig_height = (2+extra_height) * scale * num_rows + ((title is not None) * 0.3)
+    fig_height = (2 + extra_height) * scale * num_rows + (0.3 if title is not None else 0)
 
+    # Create a grid of subplots
     fig, axes = plt.subplots(num_rows, num_cols, squeeze=False, figsize=(fig_width, fig_height))
-    all_axes = []
-    for ax_row in axes:
-        all_axes.extend(ax_row)
+    all_axes = [ax for ax_row in axes for ax in ax_row]
 
+       # If class_names are provided, map labels and predictions to class names
     if class_names is not None:
         if labels is not None:
-            labels = [f'{l}:{class_names[int(l)]}' for l in labels]
+            if isinstance(class_names, dict):
+                if isinstance(next(iter(class_names.keys())), str):  # Handle string keys (e.g., mini-ImageNet)
+                    labels_to_marks = {v: k for k, v in class_names.items()}
+                    labels = [f'{l}:{class_names[labels_to_marks[l]]}' for l in labels]
+                else:  # For datasets like CIFAR-10 or Fashion-MNIST
+                    labels = [f'{l}:{class_names[l]}' for l in labels]
+            else:  # Assume class_names is a list
+                labels = [f'{l}:{class_names[l]}' for l in labels]
         if predictions is not None:
-            if len(predictions.shape) == 2:
-                # probability distribution or onehot vector, so argmax it:
+            if len(predictions.shape) == 2:  # Handle probability distributions or one-hot vectors
                 predictions = predictions.argmax(dim=1)
-            predictions = [f'{p}:{class_names[int(p)]}' for p in predictions]
+            predictions = [f'{p}:{class_names[p]}' for p in predictions]
 
+    # Plot each image in the grid
     for b, ax in enumerate(all_axes):
         if b < max_to_show:
-            # rearrange to H*W*C:
-            img_p = images[b].permute([1,2,0])
-            # un-normalise:
+            # Rearrange to H*W*C
+            img_p = images[b].permute([1, 2, 0])
+            # Normalize the image
             img = (img_p - img_p.min()) / (img_p.max() - img_p.min())
-            # to numpy:
+            # Convert to numpy
             img = img.cpu().detach().numpy()
 
+            # Display the image
             ax.imshow(img, cmap='gray')
-            ax.axes.get_xaxis().set_ticks([])
-            ax.axes.get_yaxis().set_ticks([])
+            ax.axis('off')
 
+            # Add title for labels and predictions
             if labels is not None:
-                ax.set_title(f'{labels[b]}', fontsize=10*scale**0.5)
+                ax.set_title(f'{labels[b]}', fontsize=10 * scale ** 0.5)
             if predictions is not None:
-                ax.set_title(f'pred: {predictions[b]}', fontsize=10*scale**0.5)
+                ax.set_title(f'pred: {predictions[b]}', fontsize=10 * scale ** 0.5)
             if labels is not None and predictions is not None:
+                # Indicate correctness of predictions
                 if labels[b] == predictions[b]:
-                    ### matching prediction, mark as correct:
                     mark, color = '✔', 'green'
                 else:
                     mark, color = '✘', 'red'
-
-                ax.set_title(f'label:{labels[b]}    \npred:{predictions[b]} {mark}', color=color, fontsize=8*scale**0.5)
+                ax.set_title(f'label:{labels[b]}\npred:{predictions[b]} {mark}', color=color, fontsize=8 * scale ** 0.5)
         else:
             ax.axis('off')
+
+    # Add the main title if provided
     if title is not None:
-        if center_title:
-            x, align = 0.5, 'center'
-        else:
-            x, align = 0, 'left'
-        fig.suptitle(title, fontsize=14*scale**0.5, x=x, horizontalalignment=align)
+        x, align = (0.5, 'center') if center_title else (0, 'left')
+        fig.suptitle(title, fontsize=14 * scale ** 0.5, x=x, horizontalalignment=align)
+
+    # Adjust layout and display the plot
     fig.tight_layout()
     plt.show()
     plt.close()
@@ -105,7 +120,28 @@ def training_plot(metrics,
       show_timesteps=False, # display discontinuities between CL timesteps
       results_dir=""
       ):
+    """
+    Plots training and validation loss/accuracy curves over training steps.
 
+    Args:
+        metrics (dict): Dictionary containing the following keys:
+            - 'train_losses': List of training losses at each step.
+            - 'val_losses': List of validation losses at each epoch.
+            - 'train_accs': List of training accuracies at each step.
+            - 'val_accs': List of validation accuracies at each epoch.
+            - 'epoch_steps': List of training steps corresponding to epoch boundaries.
+            - 'CL_timesteps': List of training steps corresponding to Continual Learning timesteps.
+            - 'soft_losses' (optional): List of soft losses (e.g., from LwF) at each step.
+        title (str, optional): Title for the entire figure. Defaults to None.
+        alpha (float, optional): Exponential smoothing factor for curves. Defaults to 0.05.
+        baselines (list or dict, optional): Baseline accuracies to plot as horizontal lines. 
+            Can be a list of values or a dictionary with names and values. Defaults to None.
+        show_epochs (bool, optional): If True, draws vertical lines at epoch boundaries. Defaults to False.
+        show_timesteps (bool, optional): If True, draws vertical lines at Continual Learning timestep boundaries. Defaults to False.
+
+    Returns:
+        None: Displays the generated plot.
+    """
     for metric_name in 'train_losses', 'val_losses', 'train_accs', 'val_accs', 'epoch_steps':
         assert metric_name in metrics, f"{metric_name} missing from metrics dict"
 
@@ -220,10 +256,17 @@ def training_plot(metrics,
     plt.close()
 
 
-
 def get_batch_acc(pred, y):
-    """calculates accuracy over a batch as a float
-    given predicted logits 'pred' and integer targets 'y'"""
+    """
+    Calculates accuracy for a batch of predictions.
+
+    Args:
+        pred (torch.Tensor): Predicted logits with shape (batch_size, num_classes).
+        y (torch.Tensor): Ground truth labels as integers with shape (batch_size,).
+
+    Returns:
+        float: Accuracy as a scalar value.
+    """
     return (pred.argmax(axis=1) == y).float().mean().item()
 
 def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi-task classification
