@@ -85,7 +85,7 @@ datasets = build_task_datasets(
     fmnist=fmnist,
     timestep_task_classes=timestep_task_classes,
     preprocess=preprocess,
-    VAL_FRAC=0.1,
+    VAL_FRAC=0.1,       
     TEST_FRAC=0.1,
     BATCH_SIZE=64,
     inspect_task=inspect_task  # Optional
@@ -96,11 +96,11 @@ final_test_loader = datasets['final_test_loader']
 joint_train_loader = datasets['joint_train_loader']
 task_test_sets = datasets['task_test_sets']
 
-# Model configuration
-backbone_config = [64, 128, 256, 512]  # Smaller backbone
-task_head_projection_size = 128        # Larger hidden layer in task head
-hyper_hidden_features = 512            # Larger hypernetwork hidden layer size
-hyper_hidden_layers = 4                # Deeper hypernetwork
+# More complex model configuration
+backbone_config = [128, 256, 512, 1024]  # Larger and deeper backbone
+task_head_projection_size = 256          # Even larger hidden layer in task head
+hyper_hidden_features = 1024             # Larger hypernetwork hidden layer size
+hyper_hidden_layers = 6                  # Deeper hypernetwork
 
 # Initialize the model with the new configurations
 model = HyperCMTL(
