@@ -46,9 +46,7 @@ from copy import deepcopy # Deepcopy for copying models
 # time and logging for logging training progress
 import time
 import logging
-
-# Custom MLclf module (imports miniimagent dataset)
-from MLclf import MLclf
+import pdb
 
 torch.manual_seed(0)
 
@@ -57,11 +55,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
 TEST_FRAC = 0.1
-BATCH_SIZE = 256
+BATCH_SIZE = 64
 dataset = "Split-MNIST" 
 
 ### training hyperparameters:
-EPOCHS_PER_TIMESTEP = 5
+EPOCHS_PER_TIMESTEP = 3
 lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
@@ -84,21 +82,22 @@ logger.log(f'Training on device: {device}')
 data = setup_dataset(dataset, data_dir='./data', num_tasks=5, val_frac=VAL_FRAC, test_frac=TEST_FRAC, batch_size=BATCH_SIZE)
 
 timestep_tasks = data['timestep_tasks']
-test_loader = data['final_test_loader']
-task_test_sets = data['task_metadata']
+final_test_loader = data['final_test_loader']
+task_metadata = data['task_metadata']
+task_test_sets = data['task_test_sets']
 
 # More complex model configuration
 backbone_config = [128, 256, 512, 1024]  # Larger and deeper backbone
-task_head_projection_size = 256          # Even larger hidden layer in task head
-hyper_hidden_features = 1024             # Larger hypernetwork hidden layer size
-hyper_hidden_layers = 6                  # Deeper hypernetwork
+task_head_projection_size = 64          # Even larger hidden layer in task head
+hyper_hidden_features = 256             # Larger hypernetwork hidden layer size
+hyper_hidden_layers = 3                 # Deeper hypernetwork
 
 # Initialize the model with the new configurations
 model = HyperCMTL(
-    num_instances=len(timestep_task_classes),
+    num_instances=len(task_metadata),
     backbone_layers=backbone_config,
     task_head_projection_size=task_head_projection_size,
-    task_head_num_classes=2,
+    task_head_num_classes=len(task_metadata[0]),
     hyper_hidden_features=hyper_hidden_features,
     hyper_hidden_layers=hyper_hidden_layers,
     device=device,
@@ -137,13 +136,14 @@ prev_test_accs = []
 
 print("Starting training")
 
-with wandb.init(project='HyperCMTL', name='HyperCMTL') as run:
+with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}') as run:
 
     # outer loop over each task, in sequence
     for t, (task_train, task_val) in timestep_tasks.items():
-        logger.log(f"Training on task id: {t}  (classification between: {task_train.classes})")
-        if verbose:
-            inspect_task(task_train)
+        logger.log(f"Training on task id: {t}  (classification between: {task_metadata[t]})")
+
+        #if verbose:
+            #inspect_task(task_train=task_train, task_metadata=task_metadata)
 
         # build train and validation loaders for the current task:
         train_loader, val_loader = [utils.data.DataLoader(data,
@@ -197,9 +197,9 @@ with wandb.init(project='HyperCMTL', name='HyperCMTL') as run:
                 epoch_soft_losses.append(soft_loss.item() if isinstance(soft_loss, torch.Tensor) else soft_loss)
                 metrics['steps_trained'] += 1
 
-                # if show_progress:
+                if show_progress:
                     # show loss/acc of this batch in progress bar:
-                    # progress_bar.set_description((f'E{e} batch loss:{hard_loss:.2f}, batch acc:{epoch_train_accs[-1]:>5.1%}'))
+                    progress_bar.set_description((f'E{e} batch loss:{hard_loss:.2f}, batch acc:{epoch_train_accs[-1]:>5.1%}'))
 
             # evaluate after each epoch on the current task's validation set:
             avg_val_loss, avg_val_acc = evaluate_model(model, val_loader, loss_fn)
@@ -214,10 +214,10 @@ with wandb.init(project='HyperCMTL', name='HyperCMTL') as run:
             metrics['val_accs'].append(avg_val_acc)
             metrics['soft_losses'].extend(epoch_soft_losses)
 
-            # if show_progress:
+            if show_progress:
                 # log end-of-epoch stats:
-                # logger.log((f'E{e} loss:{np.mean(epoch_train_losses):.2f}|v:{avg_val_loss:.2f}' +
-                                    # f'| acc t:{np.mean(epoch_train_accs):>5.1%}|v:{avg_val_acc:>5.1%}'))
+                logger.log((f'E{e} loss:{np.mean(epoch_train_losses):.2f}|v:{avg_val_loss:.2f}' +
+                                    f'| acc t:{np.mean(epoch_train_accs):>5.1%}|v:{avg_val_acc:>5.1%}'))
 
             if avg_val_acc > metrics['best_val_acc']:
                 metrics['best_val_acc'] = avg_val_acc
@@ -232,18 +232,22 @@ with wandb.init(project='HyperCMTL', name='HyperCMTL') as run:
         if verbose:
             logger.log(f'Best validation accuracy: {metrics["best_val_acc"]:.2%}\n')
         metrics['best_val_acc'] = 0.0
-
+        
         # evaluate on all tasks:
-        test_accs = test_evaluate(model, 
-                                task_test_sets[:t+1],
-                                task_test_sets,
-                                prev_accs = prev_test_accs,
-                                model_name=f'LwF at t={t}',
-                                show_taskwise_accuracy = True,
-                                verbose=True,
-                                batch_size=BATCH_SIZE,
-                                results_dir = results_dir + f'/evaluation-t{t}.png', 
-                                task_id=t)
+        test_accs = test_evaluate(
+                            multitask_model=model, 
+                            selected_test_sets=task_test_sets[:t+1],  
+                            task_test_sets=task_test_sets, 
+                            prev_accs = prev_test_accs,
+                            show_taskwise_accuracy=True, 
+                            baseline_taskwise_accs = None, 
+                            model_name= 'HyperCMTL + LwF', 
+                            verbose=True, 
+                            batch_size=64,
+                            results_dir=results_dir,
+                            task_id=t,
+                            task_metadata=task_metadata,
+                            )
         
         prev_test_accs.append(test_accs)
 

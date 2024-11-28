@@ -11,6 +11,7 @@ import matplotlib as mpl
 import wandb
 import io
 from PIL import Image
+import pdb
 
 def inspect_batch(images, labels=None, predictions=None, class_names=None, title=None,
                   center_title=True, max_to_show=16, num_cols=4, scale=1):
@@ -107,7 +108,7 @@ def inspect_batch(images, labels=None, predictions=None, class_names=None, title
 
 
 # Quick function for displaying the classes of a task
-def inspect_task(task_data, title=None):
+def inspect_task(task_train, task_metadata, title=None):
     """
     Displays example images for each class in the task.
 
@@ -119,11 +120,12 @@ def inspect_task(task_data, title=None):
         None: Displays a grid of example images for each class.
     """
     # Get the number of classes and their names as strings
-    num_task_classes = len(task_data.classes)
-    task_classes = tuple([str(c) for c in task_data.classes])
+    num_task_classes = len(task_metadata[0])
+    
+    task_classes = tuple([str(c) for c in task_metadata[0]])
 
     # Retrieve one example image for each class
-    class_image_examples = [[batch[0] for batch in task_data if batch[1] == c][0] for c in range(num_task_classes)]
+    class_image_examples = [[batch[0] for batch in task_train if batch[1] == c][0] for c in range(num_task_classes)]
 
     # Display the images in a grid
     inspect_batch(
@@ -331,6 +333,7 @@ def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi
     return np.mean(batch_val_losses), np.mean(batch_val_accs)
 
 
+# Evaluate the model on the test sets of all tasks
 def test_evaluate(multitask_model: nn.Module, 
                   selected_test_sets,  
                   task_test_sets, 
@@ -341,7 +344,8 @@ def test_evaluate(multitask_model: nn.Module,
                   verbose=False, 
                   batch_size=64,
                   results_dir="",
-                  task_id=0
+                  task_id=0,
+                  task_metadata=None
                  ):
     """
     Evaluates the model on all selected test sets and optionally displays results.
@@ -375,7 +379,7 @@ def test_evaluate(multitask_model: nn.Module,
         task_test_loss, task_test_acc = evaluate_model(multitask_model, test_loader)
 
         if verbose:
-            print(f'{test_data.classes}: {task_test_acc:.2%}')
+            print(f'{task_metadata[t]}: {task_test_acc:.2%}')
             if baseline_taskwise_accs is not None:
                 print(f'(Baseline: {baseline_taskwise_accs[t]:.2%})')
 
@@ -394,7 +398,13 @@ def test_evaluate(multitask_model: nn.Module,
         bar_heights = task_test_accs + [0]*(len(task_test_sets) - len(selected_test_sets))
         # display bar plot with accuracy on each evaluation task
         plt.bar(x = range(len(task_test_sets)), height=bar_heights, zorder=1)
-        plt.xticks(range(len(task_test_sets)), [','.join(task.classes) for task in task_test_sets], rotation='vertical')
+        
+        plt.xticks(
+        range(len(task_test_sets)),
+        [','.join(task_classes.values()) for t, task_classes in task_metadata.items()],
+        rotation='vertical'
+        )
+
         plt.axhline(avg_task_test_acc, c=[0.4]*3, linestyle=':')
         plt.text(0, avg_task_test_acc+0.002, f'{model_name} (average)', c=[0.4]*3, size=8)
 
@@ -417,64 +427,14 @@ def test_evaluate(multitask_model: nn.Module,
         plt.tight_layout(rect=[0, 0, 1, 0.95])
 
         # Save figure to wandb
-        plt.savefig(results_dir)
-        img = Image.open(results_dir)
+        file_path = os.path.join(results_dir, f'taskwise_accuracy_task_{task_id}.png')
+        plt.savefig(file_path)
+        img = Image.open(file_path)
         wandb.log({f'taskwise accuracy': wandb.Image(img), 'task': task_id})
 
         plt.close()
 
     return task_test_accs
-
-
-def load_dataset(dataset_name):
-    """
-    Load the specified dataset and preprocess the data.
-    
-    Args:
-        dataset_name (str): Name of the dataset ('fmnist', 'cifar100', 'tinyimagenet').
-
-    Returns:
-        Tuple: Dataset object, class names, class to index mapping.
-    """
-
-    if dataset_name == 'mnist':
-        # Download MNIST dataset
-        dataset = datasets.MNIST(root='data/', train=True, download=True)
-        dataset.name, dataset.num_classes = 'MNIST', 10
-        dataset.class_to_idx = {i: i for i in range(10)}
-
-        # Define task splits
-        timestep_task_classes = {
-            0: [0, 1],  # Task 0: Classes 0 and 1
-            1: [2, 3],  # Task 1: Classes 2 and 3
-            2: [4, 5],  # Task 2: Classes 4 and 5
-            3: [6, 7],  # Task 3: Classes 6 and 7
-            4: [8, 9]   # Task 4: Classes 8 and 9
-        }
-
-    elif dataset_name == 'cifar100':
-        dataset = datasets.CIFAR100(root='./data', download=True)
-        dataset.classes = dataset.classes  # Provided by torchvision
-        dataset.class_to_idx = {cls_name: idx for idx, cls_name in enumerate(dataset.classes)}
-
-        timestep_task_classes = {}
-        idx = 0
-        for i, cl in enumerate(dataset.classes):
-            if i == len(dataset.classes) - 1:
-                break
-            # Store the classes in pairs for each timestep to avoid class overlap
-            if i % 2 == 0:
-                continue
-            timestep_task_classes[idx] = [dataset.classes[i], dataset.classes[i+1]]
-            idx += 1
-    elif dataset_name == 'tinyimagenet':
-        dataset = TinyImageNet(root='./data/tiny-imagenet-200', split='train', transform=transforms.ToTensor())
-        dataset.classes = dataset.classes  # Assume this property is defined in TinyImageNet
-        dataset.class_to_idx = dataset.class_to_idx  # Assume this property is defined in TinyImageNet
-    else:
-        raise ValueError(f"Dataset '{dataset_name}' not supported.")
-    
-    return dataset, timestep_task_classes
 
 def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, test_frac=0.1, batch_size=256):
     """
@@ -597,7 +557,8 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
     return {
         'timestep_tasks': timestep_tasks,
         'final_test_loader': final_test_loader,
-        'task_metadata': task_metadata
+        'task_metadata': task_metadata,
+        'task_test_sets': task_test_sets
     }
 
 import torch
