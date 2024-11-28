@@ -424,7 +424,7 @@ def test_evaluate(multitask_model: nn.Module,
             plt.text(0, baseline_avg+0.002, 'baseline average', c=[0.6]*3, size=8)
 
         plt.ylim([0, 1])
-        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        #plt.tight_layout(rect=[0, 0, 1, 0.95])
 
         # Save figure to wandb
         file_path = os.path.join(results_dir, f'taskwise_accuracy_task_{task_id}.png')
@@ -484,7 +484,7 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
             for t in range(num_tasks)
         }
 
-    elif dataset_name == 'TinyImagenet':
+    elif dataset_name == 'TinyImageNet':
         dataset = datasets.ImageFolder(os.path.join(data_dir, 'tiny-imagenet-200', 'train'))
         num_classes = 200
         preprocess = transforms.Compose([
@@ -513,7 +513,7 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
             task_images = [Image.fromarray(dataset.data[i]) for i in task_indices]
             task_labels = [label for i, label in enumerate(dataset.targets) if label in task_classes]
 
-        elif dataset_name == 'TinyImagenet':
+        elif dataset_name == 'TinyImageNet':
             task_indices = [i for i, (_, label) in enumerate(dataset.samples) if label in task_classes]
             task_images = [dataset[i][0] for i in task_indices]
             task_labels = [label for i, (_, label) in enumerate(dataset.samples) if label in task_classes]

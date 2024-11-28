@@ -41,6 +41,7 @@ class HyperCMTL(nn.Module):
                  hyper_hidden_features=256,                # Hypernetwork hidden layer size
                  hyper_hidden_layers=2,                    # Hypernetwork number of layers
                  device='cuda',
+                 channels=1,
                  std=0.01):
         super().__init__()
 
@@ -51,11 +52,12 @@ class HyperCMTL(nn.Module):
         self.hyper_hidden_features = hyper_hidden_features
         self.hyper_hidden_layers = hyper_hidden_layers
         self.device = device
+        self.channels = channels
         self.std = std
 
         # Video decomposition network (Backbone)
         self.backbone = ConvBackbone(layers=backbone_layers,
-                                     input_size=(1, 32, 32),
+                                     input_size=(channels, 32, 32),
                                      device=device)
 
         # Task head
@@ -98,6 +100,7 @@ class HyperCMTL(nn.Module):
             hyper_hidden_features=self.hyper_hidden_features,
             hyper_hidden_layers=self.hyper_hidden_layers,
             device=device,
+            channels=self.channels,
             std=0.01
         ).to(device)
         new_model.load_state_dict(self.state_dict())

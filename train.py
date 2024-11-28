@@ -55,11 +55,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
 TEST_FRAC = 0.1
-BATCH_SIZE = 64
-dataset = "Split-MNIST" 
+BATCH_SIZE = 32
+dataset = "TinyImageNet" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
+NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
 
 ### training hyperparameters:
-EPOCHS_PER_TIMESTEP = 2
+EPOCHS_PER_TIMESTEP = 5
 lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
@@ -79,7 +80,7 @@ logger.log(f'Training hyperparameters: EPOCHS_PER_TIMESTEP={EPOCHS_PER_TIMESTEP}
 logger.log(f'Training on device: {device}')
 
 ### Define preprocessing transform and load a batch to inspect it:
-data = setup_dataset(dataset, data_dir='./data', num_tasks=5, val_frac=VAL_FRAC, test_frac=TEST_FRAC, batch_size=BATCH_SIZE)
+data = setup_dataset(dataset, data_dir='./data', num_tasks=NUM_TASKS, val_frac=VAL_FRAC, test_frac=TEST_FRAC, batch_size=BATCH_SIZE)
 
 timestep_tasks = data['timestep_tasks']
 final_test_loader = data['final_test_loader']
@@ -88,9 +89,10 @@ task_test_sets = data['task_test_sets']
 
 # More complex model configuration
 backbone_config = [128, 256, 512, 1024]  # Larger and deeper backbone
-task_head_projection_size = 64          # Even larger hidden layer in task head
-hyper_hidden_features = 256             # Larger hypernetwork hidden layer size
-hyper_hidden_layers = 3                 # Deeper hypernetwork
+task_head_projection_size = 256          # Even larger hidden layer in task head
+hyper_hidden_features = 512             # Larger hypernetwork hidden layer size
+hyper_hidden_layers = 4                 # Deeper hypernetwork
+channels = 1 if dataset == 'Split-MNIST' else 3 # Number of channels in the input images
 
 # Initialize the model with the new configurations
 model = HyperCMTL(
@@ -100,6 +102,7 @@ model = HyperCMTL(
     task_head_num_classes=len(task_metadata[0]),
     hyper_hidden_features=hyper_hidden_features,
     hyper_hidden_layers=hyper_hidden_layers,
+    channels = channels, 
     device=device,
     std=0.01
 ).to(device)
@@ -243,7 +246,7 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}') as run:
                             baseline_taskwise_accs = None, 
                             model_name= 'HyperCMTL + LwF', 
                             verbose=True, 
-                            batch_size=64,
+                            batch_size=BATCH_SIZE,
                             results_dir=results_dir,
                             task_id=t,
                             task_metadata=task_metadata,
