@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch.utils as utils
 from torch.utils.data import TensorDataset, DataLoader, random_split, ConcatDataset
+from torchvision import datasets, transforms
+#from tinyimagenet import TinyImageNet
 import pandas as pd
 import matplotlib as mpl
 import wandb
@@ -104,13 +106,35 @@ def inspect_batch(images, labels=None, predictions=None, class_names=None, title
     plt.close()
 
 
-# quick function for displaying the classes of a task:
+# Quick function for displaying the classes of a task
 def inspect_task(task_data, title=None):
+    """
+    Displays example images for each class in the task.
+
+    Args:
+        task_data (Dataset): The task-specific dataset containing classes and data.
+        title (str, optional): Title for the visualization. Default is None.
+
+    Returns:
+        None: Displays a grid of example images for each class.
+    """
+    # Get the number of classes and their names as strings
     num_task_classes = len(task_data.classes)
     task_classes = tuple([str(c) for c in task_data.classes])
 
-    class_image_examples = [[batch[0] for batch in task_data if batch[1]==c][0] for c in range(num_task_classes)]
-    inspect_batch(class_image_examples, labels=task_classes, scale=0.7, num_cols=num_task_classes, title=title, center_title=False)
+    # Retrieve one example image for each class
+    class_image_examples = [[batch[0] for batch in task_data if batch[1] == c][0] for c in range(num_task_classes)]
+
+    # Display the images in a grid
+    inspect_batch(
+        class_image_examples,
+        labels=task_classes,
+        scale=0.7,
+        num_cols=num_task_classes,
+        title=title,
+        center_title=False
+    )
+
 
 def training_plot(metrics,
       title=None, # optional figure title
@@ -274,22 +298,36 @@ def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi
                    loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
                    device = 'cuda'
                   ):
-    """runs model on entirety of validation loader,
-    with specified loss and accuracy functions,
-    and returns average loss/acc over all batches"""
+    """
+    Evaluates the model on a validation dataset.
+
+    Args:
+        multitask_model (nn.Module): The trained multitask model to evaluate.
+        val_loader (DataLoader): DataLoader for the validation dataset.
+        loss_fn (_Loss, optional): Loss function to calculate validation loss. Default is CrossEntropyLoss.
+
+    Returns:
+        tuple: Average validation loss and accuracy across all batches.
+    """
     with torch.no_grad():
         batch_val_losses, batch_val_accs = [], []
 
+        # Iterate over all batches in the validation DataLoader
         for batch in val_loader:
             vx, vy, task_ids = batch
             vx, vy = vx.to(device), vy.to(device)
 
+            # Forward pass with task-specific parameters
             vpred = multitask_model(vx, task_ids[0])
+
+            # Calculate loss and accuracy for the batch
             val_loss = loss_fn(vpred, vy)
             val_acc = get_batch_acc(vpred, vy)
 
             batch_val_losses.append(val_loss.item())
             batch_val_accs.append(val_acc)
+
+    # Return average loss and accuracy across all batches
     return np.mean(batch_val_losses), np.mean(batch_val_accs)
 
 
@@ -305,34 +343,53 @@ def test_evaluate(multitask_model: nn.Module,
                   results_dir="",
                   task_id=0
                  ):
+    """
+    Evaluates the model on all selected test sets and optionally displays results.
+
+    Args:
+        multitask_model (nn.Module): The trained multitask model to evaluate.
+        selected_test_sets (list[Dataset]): List of test datasets for each task.
+        prev_accs (list[list[float]], optional): Previous accuracies for tracking forgetting.
+        show_taskwise_accuracy (bool, optional): If True, plots a bar chart of taskwise accuracies.
+        baseline_taskwise_accs (list[float], optional): Baseline accuracies for comparison.
+        model_name (str, optional): Name of the model to show in plots. Default is ''.
+        verbose (bool, optional): If True, prints detailed evaluation results. Default is False.
+
+    Returns:
+        list[float]: Taskwise accuracies for the selected test sets.
+    """
     if verbose:
         print(f'{model_name} evaluation on test set of all tasks:'.capitalize())
 
     task_test_losses = []
     task_test_accs = []
 
+    # Iterate over each task's test dataset
     for t, test_data in enumerate(selected_test_sets):
+        # Create a DataLoader for the current task's test dataset
         test_loader = utils.data.DataLoader(test_data,
                                        batch_size=batch_size,
                                        shuffle=True)
 
+        # Evaluate the model on the current task
         task_test_loss, task_test_acc = evaluate_model(multitask_model, test_loader)
 
         if verbose:
             print(f'{test_data.classes}: {task_test_acc:.2%}')
             if baseline_taskwise_accs is not None:
-                print(f'(baseline: {baseline_taskwise_accs[t]:.2%})')
+                print(f'(Baseline: {baseline_taskwise_accs[t]:.2%})')
 
         task_test_losses.append(task_test_loss)
         task_test_accs.append(task_test_acc)
 
+    # Calculate average test loss and accuracy across all tasks
     avg_task_test_loss = np.mean(task_test_losses)
     avg_task_test_acc = np.mean(task_test_accs)
 
     if verbose:
         print(f'\n +++ AVERAGE TASK TEST ACCURACY: {avg_task_test_acc:.2%} +++ ')
 
-
+    # Plot taskwise accuracy if enabled
     if show_taskwise_accuracy:
         bar_heights = task_test_accs + [0]*(len(task_test_sets) - len(selected_test_sets))
         # display bar plot with accuracy on each evaluation task
@@ -369,94 +426,179 @@ def test_evaluate(multitask_model: nn.Module,
     return task_test_accs
 
 
-
-def build_task_datasets(
-    fmnist,
-    timestep_task_classes,
-    preprocess,
-    VAL_FRAC,
-    TEST_FRAC,
-    BATCH_SIZE,
-    inspect_task=None
-):
+def load_dataset(dataset_name):
     """
-    Builds task datasets for each timestep with train/validation/test splits and combines test datasets for final evaluation.
+    Load the specified dataset and preprocess the data.
     
     Args:
-        fmnist: Dataset object containing data, labels, and class mappings.
-        timestep_task_classes (dict): Mapping of timestep to a list of classes for the task.
-        preprocess (callable): Function to preprocess images.
-        VAL_FRAC (float): Fraction of data for validation split.
-        TEST_FRAC (float): Fraction of data for test split.
-        BATCH_SIZE (int): Batch size for DataLoaders.
-        inspect_task (callable, optional): Function to inspect task datasets.
-    
+        dataset_name (str): Name of the dataset ('fmnist', 'cifar100', 'tinyimagenet').
+
     Returns:
-        dict: Contains the following:
-            - 'timestep_tasks': Train/validation datasets for each timestep.
-            - 'final_test_loader': DataLoader for the combined test datasets of all tasks.
-            - 'joint_train_loader': DataLoader for the combined training datasets of all tasks.
+        Tuple: Dataset object, class names, class to index mapping.
     """
+
+    if dataset_name == 'mnist':
+        # Download MNIST dataset
+        dataset = datasets.MNIST(root='data/', train=True, download=True)
+        dataset.name, dataset.num_classes = 'MNIST', 10
+        dataset.class_to_idx = {i: i for i in range(10)}
+
+        # Define task splits
+        timestep_task_classes = {
+            0: [0, 1],  # Task 0: Classes 0 and 1
+            1: [2, 3],  # Task 1: Classes 2 and 3
+            2: [4, 5],  # Task 2: Classes 4 and 5
+            3: [6, 7],  # Task 3: Classes 6 and 7
+            4: [8, 9]   # Task 4: Classes 8 and 9
+        }
+
+    elif dataset_name == 'cifar100':
+        dataset = datasets.CIFAR100(root='./data', download=True)
+        dataset.classes = dataset.classes  # Provided by torchvision
+        dataset.class_to_idx = {cls_name: idx for idx, cls_name in enumerate(dataset.classes)}
+
+        timestep_task_classes = {}
+        idx = 0
+        for i, cl in enumerate(dataset.classes):
+            if i == len(dataset.classes) - 1:
+                break
+            # Store the classes in pairs for each timestep to avoid class overlap
+            if i % 2 == 0:
+                continue
+            timestep_task_classes[idx] = [dataset.classes[i], dataset.classes[i+1]]
+            idx += 1
+    elif dataset_name == 'tinyimagenet':
+        dataset = TinyImageNet(root='./data/tiny-imagenet-200', split='train', transform=transforms.ToTensor())
+        dataset.classes = dataset.classes  # Assume this property is defined in TinyImageNet
+        dataset.class_to_idx = dataset.class_to_idx  # Assume this property is defined in TinyImageNet
+    else:
+        raise ValueError(f"Dataset '{dataset_name}' not supported.")
+    
+    return dataset, timestep_task_classes
+
+def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, test_frac=0.1, batch_size=256):
+    """
+    Sets up dataset, dataloaders, and metadata for training and testing.
+
+    Args:
+        dataset_name (str): Name of the dataset ('Split-CIFAR100', 'TinyImagenet', 'Split-MNIST').
+        data_dir (str): Directory where the dataset is stored.
+        num_tasks (int): Number of tasks to split the dataset into.
+        val_frac (float): Fraction of the data to use for validation.
+        test_frac (float): Fraction of the data to use for testing.
+        batch_size (int): Batch size for the dataloaders.
+
+    Returns:
+        dict: A dictionary containing dataloaders and metadata for training and testing.
+    """
+    # Initialization
     timestep_tasks = {}
-    timestep_loaders = {}
+
     task_test_sets = []
+    task_metadata = {}
 
+    # Dataset-specific settings
+    if dataset_name == 'Split-MNIST':
+        dataset = datasets.MNIST(root=data_dir, train=True, download=True)
+        num_classes = 10
+        preprocess = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,))
+        ])
+        task_classes_per_task = num_classes // num_tasks
+        timestep_task_classes = {
+            t: list(range(t * task_classes_per_task, (t + 1) * task_classes_per_task))
+            for t in range(num_tasks)
+        }
+
+    elif dataset_name == 'Split-CIFAR100':
+        dataset = datasets.CIFAR100(root=data_dir, train=True, download=True)
+        num_classes = 100
+        preprocess = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+        task_classes_per_task = num_classes // num_tasks
+        timestep_task_classes = {
+            t: list(range(t * task_classes_per_task, (t + 1) * task_classes_per_task))
+            for t in range(num_tasks)
+        }
+
+    elif dataset_name == 'TinyImagenet':
+        dataset = datasets.ImageFolder(os.path.join(data_dir, 'tiny-imagenet-200', 'train'))
+        num_classes = 200
+        preprocess = transforms.Compose([
+            transforms.Resize((64, 64)),
+            transforms.ToTensor(),
+            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+        ])
+        task_classes_per_task = num_classes // num_tasks
+        timestep_task_classes = {
+            t: list(range(t * task_classes_per_task, (t + 1) * task_classes_per_task))
+            for t in range(num_tasks)
+        }
+
+    else:
+        raise ValueError(f"Unsupported dataset: {dataset_name}")
+
+    # Process tasks
     for t, task_classes in timestep_task_classes.items():
-        # Map original labels to task-specific labels
-        task_class_labels = [fmnist.class_to_idx[cl] for cl in task_classes]
-        task_datapoint_idxs = [i for i, label in enumerate(fmnist.targets) if label in task_class_labels]
-        task_datapoints = [fmnist[idx] for idx in task_datapoint_idxs]
+        if dataset_name == 'Split-MNIST':
+            task_indices = [i for i, label in enumerate(dataset.targets) if label in task_classes]
+            task_images = [Image.fromarray(dataset.data[i].numpy(), mode='L') for i in task_indices]
+            task_labels = [label for i, label in enumerate(dataset.targets) if label in task_classes]
 
-        class_to_idx = {task_classes[i]: i for i in range(len(task_classes))}
-        task_images = [preprocess(img) for (img, label) in task_datapoints]
-        task_labels = [class_to_idx[fmnist.classes[label]] for (img, label) in task_datapoints]
-        task_ids = [t] * len(task_datapoints)
+        elif dataset_name == 'Split-CIFAR100':
+            task_indices = [i for i, label in enumerate(dataset.targets) if label in task_classes]
+            task_images = [Image.fromarray(dataset.data[i]) for i in task_indices]
+            task_labels = [label for i, label in enumerate(dataset.targets) if label in task_classes]
 
-        task_image_tensor = torch.stack(task_images)
-        task_label_tensor = torch.tensor(task_labels, dtype=torch.long)
-        task_id_tensor = torch.tensor(task_ids, dtype=torch.long)
+        elif dataset_name == 'TinyImagenet':
+            task_indices = [i for i, (_, label) in enumerate(dataset.samples) if label in task_classes]
+            task_images = [dataset[i][0] for i in task_indices]
+            task_labels = [label for i, (_, label) in enumerate(dataset.samples) if label in task_classes]
 
-        task_data = TensorDataset(task_image_tensor, task_label_tensor, task_id_tensor)
+        # Map old labels to 0-based labels for the task
+        class_to_idx = {orig: idx for idx, orig in enumerate(task_classes)}
+        task_labels = [class_to_idx[int(label)] for label in task_labels]
 
-        # Train/validation/test split
-        train_frac = 1.0 - VAL_FRAC - TEST_FRAC
-        task_train, task_val, task_test = random_split(task_data, [int(train_frac * len(task_data)),
-                                                                   int(VAL_FRAC * len(task_data)),
-                                                                   int(TEST_FRAC * len(task_data))])
 
-        # Set dataset attributes
-        for dataset in (task_train, task_val, task_test):
-            dataset.classes = task_classes
-            dataset.num_classes = len(task_classes)
-            dataset.class_to_idx = class_to_idx
-            dataset.task_id = t
+        # Create tensors
+        task_images_tensor = torch.stack([preprocess(img) for img in task_images])
+        task_labels_tensor = torch.tensor(task_labels, dtype=torch.long)
+        task_ids_tensor = torch.full((len(task_labels_tensor),), t, dtype=torch.long)
 
-        # Inspect samples if inspection function is provided
-        if inspect_task:
-            print(f'Time {t}: Task ID {t}, {len(task_train)} train, {len(task_val)} validation, {len(task_test)} test')
-            inspect_task(task_train)
+        # TensorDataset
+        task_dataset = TensorDataset(task_images_tensor, task_labels_tensor, task_ids_tensor)
 
-        # Add datasets to task dictionary and test sets
-        timestep_tasks[t] = (task_train, task_val)
-        task_test_sets.append(task_test)
+        # Train/Validation/Test split
+        train_size = int((1 - val_frac - test_frac) * len(task_dataset))
+        val_size = int(val_frac * len(task_dataset))
+        test_size = len(task_dataset) - train_size - val_size
+        train_set, val_set, test_set = random_split(task_dataset, [train_size, val_size, test_size])
 
-    # Combine all task test datasets for final evaluation
+        # Store datasets and metadata
+        timestep_tasks[t] = (train_set, val_set)
+        task_test_sets.append(test_set)
+        if dataset_name == 'TinyImagenet':
+            task_metadata[t] = {
+                idx: os.path.basename(dataset.classes[orig]) for orig, idx in class_to_idx.items()
+            }
+        else:
+            task_metadata[t] = {
+                idx: dataset.classes[orig] if hasattr(dataset, 'classes') else str(orig)
+                for orig, idx in class_to_idx.items()
+            }
+
+    # Final datasets
     final_test_data = ConcatDataset(task_test_sets)
-    final_test_loader = DataLoader(final_test_data, batch_size=BATCH_SIZE, shuffle=True)
-    print(f'Final test set size (containing all tasks): {len(final_test_data)}')
-
-    # Combine all task training datasets for joint training
-    joint_train_data = ConcatDataset([train for train, _ in timestep_tasks.values()])
-    joint_train_loader = DataLoader(joint_train_data, batch_size=BATCH_SIZE, shuffle=True)
-    print(f'Joint training set size (containing all tasks): {len(joint_train_data)}')
+    final_test_loader = DataLoader(final_test_data, batch_size=batch_size, shuffle=True)
 
     return {
         'timestep_tasks': timestep_tasks,
         'final_test_loader': final_test_loader,
-        'joint_train_loader': joint_train_loader,
-        'task_test_sets': task_test_sets
+        'task_metadata': task_metadata
     }
-
 
 import torch
 

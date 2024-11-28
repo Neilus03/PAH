@@ -1,5 +1,5 @@
 # set up the environment and install any missing packages:
-!pip install torch torchvision numpy scipy matplotlib pandas pillow tqdm MLclf
+#!pip install torch torchvision numpy scipy matplotlib pandas pillow tqdm MLclf
 
 # PyTorch for building and training neural networks
 import torch
@@ -32,7 +32,7 @@ from tqdm import tqdm
 import os
 
 # Functions from utils to help with training and evaluation
-from utils import inspect_batch, test_evaluate, training_plot, build_task_datasets, inspect_task, distillation_output_loss, evaluate_model, get_batch_acc, logger
+from utils import inspect_batch, test_evaluate, training_plot, setup_dataset, inspect_task, distillation_output_loss, evaluate_model, get_batch_acc, logger
 
 # Import the HyperCMTL model architecture
 from hypernetwork import HyperCMTL
@@ -56,9 +56,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
-TEST_FRAC = 0.05
+TEST_FRAC = 0.1
 BATCH_SIZE = 256
-dataset = "fmnist" # or "cifar10"
+dataset = "Split-MNIST" 
 
 ### training hyperparameters:
 EPOCHS_PER_TIMESTEP = 5
@@ -80,128 +80,12 @@ logger.log('Starting training...')
 logger.log(f'Training hyperparameters: EPOCHS_PER_TIMESTEP={EPOCHS_PER_TIMESTEP}, lr={lr}, l2_reg={l2_reg}, temperature={temperature}, stability={stability}')
 logger.log(f'Training on device: {device}')
 
-### Fashion-MNIST dataset
-
-# Load the Fashion-MNIST dataset
-fmnist = datasets.FashionMNIST(root='data/', download=True)
-fmnist.name, fmnist.num_classes = 'Fashion-MNIST', len(fmnist.classes)
-logger.log(f'{fmnist.name}: {len(fmnist)} samples')
-
-timestep_task_classes = {}
-for i, cl in enumerate(fmnist.classes):
-    if i == len(fmnist.classes) - 1:
-        break
-    timestep_task_classes[i] = [fmnist.classes[i], fmnist.classes[i+1]]
-# print(timestep_task_classes)
-
-# Log the classes in the dataset 
-for i, cl in enumerate(fmnist.classes):
-    logger.log(f'{i}: {cl}')
-
-
-
-### Cifar10 dataset
-
-# Download and prepare the Split-CIFAR-10 dataset
-cifar10 = datasets.CIFAR10(root='data/', download=True)
-cifar10.name, cifar10.num_classes = 'CIFAR-10', len(cifar10.classes)
-print(f'{cifar10.name}: {len(cifar10)} samples')
-
-for i, cl in enumerate(cifar10.classes):
-    print(f'{i}: {cl}')
-    
-    
-
-### Mini-ImageNet dataset
-    
-#If not already downloaded, download the Mini-ImageNet dataset
-if not os.path.exists('data_miniimagenet'):
-    MLclf.miniimagenet_download(Download=True)
-
-
-# Define any transformations you want to apply to the images
-transform = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225])
-])
-
-# Transform the dataset
-train_dataset, validation_dataset, test_dataset = MLclf.miniimagenet_clf_dataset(
-    ratio_train=0.64,  # 60% for training
-    ratio_val=0.16,    # 20% for validation
-    seed_value=None,  # For reproducibility, set an integer seed
-    shuffle=True,     # Shuffle the dataset
-    transform=transform,
-    save_clf_data=True  # Save the transformed data
-)
-
-train_loader = DataLoader(dataset=train_dataset, batch_size=128, shuffle=True, num_workers=0)
-validation_loader = DataLoader(dataset=validation_dataset, batch_size=128, shuffle=False, num_workers=0)
-test_loader = DataLoader(dataset=test_dataset, batch_size=128, shuffle=False, num_workers=0)
-
-labels_to_marks = MLclf.labels_to_marks['mini-imagenet']
-marks_to_labels = MLclf.marks_to_labels['mini-imagenet']
-
-print(f'MiniImagenet: {len(train_dataset) + len(validation_dataset) + len(test_dataset)} samples')
-
-# Print class names
-for idx, class_name in marks_to_labels.items():
-    print(f'{idx}: {class_name}')
-
-print(f'Number of classes: {len(marks_to_labels)}')
-print(f'Number of training samples: {len(train_dataset)}, 600 samples per each of the {len(train_dataset) // 600} classes')
-print(f'Number of validation samples: {len(validation_dataset)}, 600 samples per each of the {len(validation_dataset) // 600} classes')
-print(f'Number of test samples: {len(test_dataset)}, 600 samples per each of the {len(test_dataset) // 600} classes')
-
 ### Define preprocessing transform and load a batch to inspect it:
+data = setup_dataset(dataset, data_dir='./data', num_tasks=5, val_frac=VAL_FRAC, test_frac=TEST_FRAC, batch_size=BATCH_SIZE)
 
-# Define the preprocessing steps for the dataset
-preprocess = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,))
-])
-
-# Example 1: Inspect a batch from Fashion-MNIST
-fmnist_batch = [fmnist[i] for i in range(16)]  # Load 16 samples
-fmnist_images = [preprocess(img) for (img, label) in fmnist_batch]  # Preprocess images
-fmnist_labels = [label for (img, label) in fmnist_batch]  # Extract labels
-inspect_batch(fmnist_images, fmnist_labels, class_names=fmnist.classes, title='Fashion-MNIST', scale=0.7)
-
-# Example 2: Inspect a batch from CIFAR-10
-cifar10_batch = [cifar10[i] for i in range(16)]  # Load 16 samples
-cifar10_images = [preprocess(img) for (img, label) in cifar10_batch]  # Preprocess images
-cifar10_labels = [label for (img, label) in cifar10_batch]  # Extract labels
-inspect_batch(cifar10_images, cifar10_labels, class_names=cifar10.classes, title='CIFAR-10', scale=0.7)
-
-# Example 3: Inspect a batch from mini-ImageNet
-miniimagenet_batch = [test_dataset[i] for i in range(16)]  # Load 16 samples
-miniimagenet_images = [img for (img, label) in miniimagenet_batch]  # Extract images
-miniimagenet_labels = [label for (img,label) in miniimagenet_batch]
-# Extract scalar values from tensor labels and convert to integers
-miniimagenet_labels_int = [label.item() for label in miniimagenet_labels]
-
-# Use the integer labels in your inspect_batch function
-inspect_batch(miniimagenet_images, miniimagenet_labels_int, class_names=marks_to_labels, title='mini-ImageNet', scale=0.7)
-
-
-
-# Log the batch of images and labels
-datasets = build_task_datasets(
-    fmnist=fmnist,
-    timestep_task_classes=timestep_task_classes,
-    preprocess=preprocess,
-    VAL_FRAC=0.1,       
-    TEST_FRAC=0.1,
-    BATCH_SIZE=64,
-    inspect_task=inspect_task  # Optional
-)
-
-# Get the datasets and dataloaders
-timestep_tasks = datasets['timestep_tasks']
-final_test_loader = datasets['final_test_loader']
-joint_train_loader = datasets['joint_train_loader']
-task_test_sets = datasets['task_test_sets']
+timestep_tasks = data['timestep_tasks']
+test_loader = data['final_test_loader']
+task_test_sets = data['task_metadata']
 
 # More complex model configuration
 backbone_config = [128, 256, 512, 1024]  # Larger and deeper backbone
