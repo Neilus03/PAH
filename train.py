@@ -59,7 +59,7 @@ BATCH_SIZE = 64
 dataset = "Split-MNIST" 
 
 ### training hyperparameters:
-EPOCHS_PER_TIMESTEP = 3
+EPOCHS_PER_TIMESTEP = 2
 lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
