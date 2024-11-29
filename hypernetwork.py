@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision.models import resnet50
 
 # import random
 # import numpy as np
@@ -35,18 +36,19 @@ class HyperCMTL(nn.Module):
     """
     def __init__(self,
                  num_instances=1,
-                 backbone_layers=[32, 64, 128, 256, 512],  # Backbone architecture
+                 #backbone_layers=[32, 64, 128, 256, 512],  # Backbone architecture
                  task_head_projection_size=64,             # Task head hidden layer size
                  task_head_num_classes=2,                  # Task head output size
                  hyper_hidden_features=256,                # Hypernetwork hidden layer size
                  hyper_hidden_layers=2,                    # Hypernetwork number of layers
                  device='cuda',
                  channels=1,
+                 img_size=[32, 32],
                  std=0.01):
         super().__init__()
 
         self.num_instances = num_instances
-        self.backbone_layers = backbone_layers
+        #self.backbone_layers = backbone_layers
         self.task_head_projection_size = task_head_projection_size
         self.task_head_num_classes = task_head_num_classes
         self.hyper_hidden_features = hyper_hidden_features
@@ -55,10 +57,12 @@ class HyperCMTL(nn.Module):
         self.channels = channels
         self.std = std
 
-        # Video decomposition network (Backbone)
-        self.backbone = ConvBackbone(layers=backbone_layers,
-                                     input_size=(channels, 32, 32),
+        # Backbone
+        '''self.backbone = ConvBackbone(layers=backbone_layers,
+                                     input_size=(channels, img_size[0], img_size[1]),
                                      device=device)
+        '''
+        self.backbone = ConvBackbone(pretrained=True, device=device)
 
         # Task head
         self.task_head = TaskHead(input_size=self.backbone.num_features,
@@ -94,7 +98,7 @@ class HyperCMTL(nn.Module):
     def deepcopy(self, device='cuda'):
         new_model = HyperCMTL(
             num_instances=self.num_instances,
-            backbone_layers=self.backbone_layers,
+            #backbone_layers=self.backbone_layers,
             task_head_projection_size=self.task_head_projection_size,
             task_head_num_classes=self.task_head_num_classes,
             hyper_hidden_features=self.hyper_hidden_features,
@@ -116,7 +120,7 @@ class HyperCMTL(nn.Module):
         print("optimizer_list", optimizer_list)
         return optimizer_list
 
-
+'''
 class ConvBackbone(nn.Module):
     def __init__(self,
                  layers=[32, 64, 128, 256, 512], # list of conv layer num_kernels
@@ -161,6 +165,49 @@ class ConvBackbone(nn.Module):
     def get_optimizer_list(self):
         optimizer_list = [{'params': self.parameters(), 'lr': 1e-3}]
         return optimizer_list
+'''
+
+class ConvBackbone(nn.Module):
+    def __init__(self, pretrained=True, device="cuda"):
+        super().__init__()
+
+        # Load pretrained ResNet-50
+        resnet = resnet50(pretrained=pretrained)
+        print("resnet:", resnet)
+        #Freeze the first few layers
+        for name, param in resnet.named_parameters():
+            if 'layer3' not in name and 'layer4' not in name and 'fc' not in name:
+                param.requires_grad = False
+            
+            
+        
+        # Remove the fully connected layer and retain only the convolutional backbone
+        self.feature_extractor = nn.Sequential(
+            *(list(resnet.children())[:-2])  # Removes FC and avg pooling
+        )
+        
+        # Add adaptive average pooling to reduce feature maps to 1x1
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        
+        # Set the number of output features (512 for ResNet-50)
+        self.num_features = resnet.fc.in_features
+
+        self.device = device
+        self.to(device)
+
+    def forward(self, x):
+        # Pass through ResNet backbone
+        x = self.feature_extractor(x)
+        
+        # Global average pooling to get feature vector
+        x = self.pool(x)
+        x = x.view(x.size(0), -1)
+
+        return x
+    
+    def get_optimizer_list(self):
+        # Add a lower learning rate for the pretrained parameters
+        return [{'params': self.feature_extractor.parameters(), 'lr': 1e-4}]
 
 
 class TaskHead(MetaModule):

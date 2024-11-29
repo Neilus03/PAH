@@ -50,21 +50,23 @@ import pdb
 
 torch.manual_seed(0)
 
+torch.cuda.empty_cache()
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
 TEST_FRAC = 0.1
-BATCH_SIZE = 32
-dataset = "TinyImageNet" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
+BATCH_SIZE = 8
+dataset = "Split-CIFAR100" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
 NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
 
 ### training hyperparameters:
-EPOCHS_PER_TIMESTEP = 5
+EPOCHS_PER_TIMESTEP = 3
 lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
-stability = 5 #`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
+stability = 3 #`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
 
 os.makedirs('results', exist_ok=True)
 # num = str(len(os.listdir('results/'))).zfill(3)
@@ -90,14 +92,14 @@ task_test_sets = data['task_test_sets']
 # More complex model configuration
 backbone_config = [128, 256, 512, 1024]  # Larger and deeper backbone
 task_head_projection_size = 256          # Even larger hidden layer in task head
-hyper_hidden_features = 512             # Larger hypernetwork hidden layer size
-hyper_hidden_layers = 4                 # Deeper hypernetwork
+hyper_hidden_features = 128             # Larger hypernetwork hidden layer size
+hyper_hidden_layers = 2                 # Deeper hypernetwork
 channels = 1 if dataset == 'Split-MNIST' else 3 # Number of channels in the input images
 
 # Initialize the model with the new configurations
 model = HyperCMTL(
     num_instances=len(task_metadata),
-    backbone_layers=backbone_config,
+    #backbone_layers=backbone_config,
     task_head_projection_size=task_head_projection_size,
     task_head_num_classes=len(task_metadata[0]),
     hyper_hidden_features=hyper_hidden_features,
@@ -256,6 +258,7 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}') as run:
 
         #store the current model as the previous model
         previous_model = model.deepcopy(device = device)
+        #torch.cuda.empty_cache()
 
     final_avg_test_acc = np.mean(test_accs)
     logger.log(f'Final average test accuracy: {final_avg_test_acc:.2%}')

@@ -342,7 +342,7 @@ def test_evaluate(multitask_model: nn.Module,
                   baseline_taskwise_accs = None, 
                   model_name: str='', 
                   verbose=False, 
-                  batch_size=64,
+                  batch_size=16,
                   results_dir="",
                   task_id=0,
                   task_metadata=None
