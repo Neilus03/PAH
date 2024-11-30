@@ -1,0 +1,66 @@
+#YAML FILE FOR CONGIGURATION OF MODEL, HYPERNETS, AND TRAINING
+device: cuda # could also be cpu
+wandb: 
+  entity: Neilus03
+  project: HyperCMTL
+  log_interval: 1
+experiment:
+  Split-Mnist:
+    data:
+      num_classes: 10
+      num_tasks: 5
+      val_frac: 0.1
+      test_frac: 0.1
+    train:
+      batch_size: 64
+      num_epochs_per_timestep: 5
+      lr: 0.0001
+      l2_reg: 0.000001
+      temperature: 2.0
+      stability: 5.0
+    backbone: resnet50 # could also be efficientnetb0 or mobilenetv2
+    hypernet:
+      hyper_hidden_features: 256
+      hyper_hidden_layers: 4
+    task_head:
+      projection_size: 256
+    
+  Split-CIFAR100:
+    data:
+      num_classes: 10
+      num_tasks: 10
+      val_frac: 0.1
+      test_frac: 0.1
+    train:
+      batch_size: 64
+      num_epochs_per_timestep: 5
+      lr: 0.0001
+      l2_reg: 0.000001
+      temperature: 2.0
+      stability: 5.0
+    backbone: resnet50 # could also be efficientnetb0 or mobilenetv2
+    hypernet:
+      hyper_hidden_features: 256
+      hyper_hidden_layers: 4
+    task_head:
+      projection_size: 256
+
+  TinyImageNet:
+    data:
+      num_classes: 20 #or 10
+      num_tasks: 10 #or 20
+      val_frac: 0.1
+      test_frac: 0.1
+    train:
+      batch_size: 64
+      num_epochs_per_timestep: 5
+      lr: 0.0001
+      l2_reg: 0.000001
+      temperature: 2.0
+      stability: 5.0
+    backbone: resnet50 # could also be efficientnetb0 or mobilenetv2
+    hypernet:
+      hyper_hidden_features: 256
+      hyper_hidden_layers: 4
+    task_head:
+      projection_size: 256

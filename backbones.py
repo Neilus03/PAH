@@ -175,7 +175,7 @@ if __name__ == "__main__":
     output = backbone(dummy_input)
     print(f"Output shape with {backbone.__class__.__name__}:", output.shape)
 
-    #VIT NO ME ESTÁ FUNCIONANDO POR UN ERROR EN DE CUDA.TENSOR VS TORCH.TENSOR
+    #VIT NO ME ESTÁ FUNCIONANDO POR UN ERROR EN DE torch.CUDA.TENSOR VS TORCH.TENSOR
     #backbone = get_backbone("vit", pretrained=True, device=device)
     #output = backbone(dummy_input)
     #print(f"Output shape with {backbone.__class__.__name__}:", output.shape)
