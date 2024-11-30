@@ -1,3 +1,7 @@
 *.gz
 *ubyte
 *.JPEG
+wandb/*
+data/*
+torchmeta/*
+results/*
