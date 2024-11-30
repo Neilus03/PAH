@@ -1,2 +1,14 @@
 *.gz
 *ubyte
+ztrain
+*.err
+*.out
+*.pyc
+*.log
+*.png
+*.json
+*.yaml
+*.txt
+*.wandb
+wandb/latest-run
+torchmeta/__pycache__/*
