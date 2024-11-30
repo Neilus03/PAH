@@ -462,6 +462,7 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
         dataset = datasets.MNIST(root=data_dir, train=True, download=True)
         num_classes = 10
         preprocess = transforms.Compose([
+            transforms.Grayscale(num_output_channels=3), # Convert to 3-channel grayscale
             transforms.ToTensor(),
             transforms.Normalize((0.5,), (0.5,))
         ])
