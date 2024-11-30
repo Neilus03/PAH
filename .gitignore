@@ -12,3 +12,8 @@ ztrain
 *.wandb
 wandb/latest-run
 torchmeta/__pycache__/*
+*.JPEG
+wandb/*
+data/*
+torchmeta/*
+results/*

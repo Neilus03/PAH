@@ -4,98 +4,139 @@ import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch.utils as utils
 from torch.utils.data import TensorDataset, DataLoader, random_split, ConcatDataset
+from torchvision import datasets, transforms
+#from tinyimagenet import TinyImageNet
 import pandas as pd
 import matplotlib as mpl
 import wandb
 import io
 from PIL import Image
+import pdb
 
-def inspect_batch(images, # batch of images as torch tensors
-        labels=None,      # optional vector of ground truth label integers
-        predictions=None, # optional vector/matrix of model predictions
-        # display parameters:
-        class_names=None, # optional list or dict of class idxs to class name strings
-        title=None,       # optional title for entire plot
-        # figure display/sizing params:
-        center_title=True,
-        max_to_show=16,
-        num_cols = 4,
-        scale=1,
-        ):
-    """accepts a batch of images as a torch tensor or list of tensors,
-    and plots them in a grid for manual inspection.
-    optionally, you can supply ground truth labels
-    and/or model predictions, to display those as well."""
+def inspect_batch(images, labels=None, predictions=None, class_names=None, title=None,
+                  center_title=True, max_to_show=16, num_cols=4, scale=1):
+    """
+    Plots a batch of images in a grid for manual inspection. Optionally displays ground truth 
+    labels and/or model predictions.
 
-    max_to_show = min([max_to_show, len(images)]) # cap at number of images
+    Args:
+        images (torch.Tensor or list): Batch of images as a torch tensor or list of tensors. Each
+            image tensor should have shape (C, H, W).
+        labels (list, optional): Ground truth labels for the images. Defaults to None.
+        predictions (torch.Tensor or list, optional): Model predictions for the images. Defaults to None.
+        class_names (list or dict, optional): Class names for labels and predictions. Can be a list 
+            (index-to-name mapping) or a dict (name-to-index mapping). Defaults to None.
+        title (str, optional): Title for the plot. Defaults to None.
+        center_title (bool, optional): Whether to center the title. Defaults to True.
+        max_to_show (int, optional): Maximum number of images to show. Defaults to 16.
+        num_cols (int, optional): Number of columns in the grid. Defaults to 4.
+        scale (float, optional): Scale factor for figure size. Defaults to 1.
 
+    Returns:
+        None: Displays the grid of images using matplotlib.
+    """
+
+    # Ensure max_to_show does not exceed the number of available images
+    max_to_show = min(max_to_show, len(images))
     num_rows = int(np.ceil(max_to_show / num_cols))
 
-    # add extra figure height if needed for captions:
-    extra_height = (((labels is not None) or (predictions is not None)) * 0.2)
+    # Calculate additional figure height for captions if labels or predictions are provided
+    extra_height = 0.2 if (labels is not None or predictions is not None) else 0
 
+    # Determine figure dimensions
     fig_width = 2 * scale * num_cols
-    fig_height = (2+extra_height) * scale * num_rows + ((title is not None) * 0.3)
+    fig_height = (2 + extra_height) * scale * num_rows + (0.3 if title is not None else 0)
 
+    # Create a grid of subplots
     fig, axes = plt.subplots(num_rows, num_cols, squeeze=False, figsize=(fig_width, fig_height))
-    all_axes = []
-    for ax_row in axes:
-        all_axes.extend(ax_row)
+    all_axes = [ax for ax_row in axes for ax in ax_row]
 
+       # If class_names are provided, map labels and predictions to class names
     if class_names is not None:
         if labels is not None:
-            labels = [f'{l}:{class_names[int(l)]}' for l in labels]
+            if isinstance(class_names, dict):
+                if isinstance(next(iter(class_names.keys())), str):  # Handle string keys (e.g., mini-ImageNet)
+                    labels_to_marks = {v: k for k, v in class_names.items()}
+                    labels = [f'{l}:{class_names[labels_to_marks[l]]}' for l in labels]
+                else:  # For datasets like CIFAR-10 or Fashion-MNIST
+                    labels = [f'{l}:{class_names[l]}' for l in labels]
+            else:  # Assume class_names is a list
+                labels = [f'{l}:{class_names[l]}' for l in labels]
         if predictions is not None:
-            if len(predictions.shape) == 2:
-                # probability distribution or onehot vector, so argmax it:
+            if len(predictions.shape) == 2:  # Handle probability distributions or one-hot vectors
                 predictions = predictions.argmax(dim=1)
-            predictions = [f'{p}:{class_names[int(p)]}' for p in predictions]
+            predictions = [f'{p}:{class_names[p]}' for p in predictions]
 
+    # Plot each image in the grid
     for b, ax in enumerate(all_axes):
         if b < max_to_show:
-            # rearrange to H*W*C:
-            img_p = images[b].permute([1,2,0])
-            # un-normalise:
+            # Rearrange to H*W*C
+            img_p = images[b].permute([1, 2, 0])
+            # Normalize the image
             img = (img_p - img_p.min()) / (img_p.max() - img_p.min())
-            # to numpy:
+            # Convert to numpy
             img = img.cpu().detach().numpy()
 
+            # Display the image
             ax.imshow(img, cmap='gray')
-            ax.axes.get_xaxis().set_ticks([])
-            ax.axes.get_yaxis().set_ticks([])
+            ax.axis('off')
 
+            # Add title for labels and predictions
             if labels is not None:
-                ax.set_title(f'{labels[b]}', fontsize=10*scale**0.5)
+                ax.set_title(f'{labels[b]}', fontsize=10 * scale ** 0.5)
             if predictions is not None:
-                ax.set_title(f'pred: {predictions[b]}', fontsize=10*scale**0.5)
+                ax.set_title(f'pred: {predictions[b]}', fontsize=10 * scale ** 0.5)
             if labels is not None and predictions is not None:
+                # Indicate correctness of predictions
                 if labels[b] == predictions[b]:
-                    ### matching prediction, mark as correct:
                     mark, color = '✔', 'green'
                 else:
                     mark, color = '✘', 'red'
-
-                ax.set_title(f'label:{labels[b]}    \npred:{predictions[b]} {mark}', color=color, fontsize=8*scale**0.5)
+                ax.set_title(f'label:{labels[b]}\npred:{predictions[b]} {mark}', color=color, fontsize=8 * scale ** 0.5)
         else:
             ax.axis('off')
+
+    # Add the main title if provided
     if title is not None:
-        if center_title:
-            x, align = 0.5, 'center'
-        else:
-            x, align = 0, 'left'
-        fig.suptitle(title, fontsize=14*scale**0.5, x=x, horizontalalignment=align)
+        x, align = (0.5, 'center') if center_title else (0, 'left')
+        fig.suptitle(title, fontsize=14 * scale ** 0.5, x=x, horizontalalignment=align)
+
+    # Adjust layout and display the plot
     fig.tight_layout()
     plt.show()
     plt.close()
 
 
-# quick function for displaying the classes of a task:
-def inspect_task(task_data, title=None):
-    num_task_classes = len(task_data.classes)
-    task_classes = tuple([str(c) for c in task_data.classes])
+# Quick function for displaying the classes of a task
+def inspect_task(task_train, task_metadata, title=None):
+    """
+    Displays example images for each class in the task.
 
-    class_image_examples = [[batch[0] for batch in task_data if batch[1]==c][0] for c in range(num_task_classes)]
-    inspect_batch(class_image_examples, labels=task_classes, scale=0.7, num_cols=num_task_classes, title=title, center_title=False)
+    Args:
+        task_data (Dataset): The task-specific dataset containing classes and data.
+        title (str, optional): Title for the visualization. Default is None.
+
+    Returns:
+        None: Displays a grid of example images for each class.
+    """
+    # Get the number of classes and their names as strings
+    num_task_classes = len(task_metadata[0])
+    
+    task_classes = tuple([str(c) for c in task_metadata[0]])
+
+    # Retrieve one example image for each class
+    class_image_examples = [[batch[0] for batch in task_train if batch[1] == c][0] for c in range(num_task_classes)]
+
+    # Display the images in a grid
+    inspect_batch(
+        class_image_examples,
+        labels=task_classes,
+        scale=0.7,
+        num_cols=num_task_classes,
+        title=title,
+        center_title=False
+    )
+
 
 def training_plot(metrics,
       title=None, # optional figure title
@@ -105,7 +146,28 @@ def training_plot(metrics,
       show_timesteps=False, # display discontinuities between CL timesteps
       results_dir=""
       ):
+    """
+    Plots training and validation loss/accuracy curves over training steps.
 
+    Args:
+        metrics (dict): Dictionary containing the following keys:
+            - 'train_losses': List of training losses at each step.
+            - 'val_losses': List of validation losses at each epoch.
+            - 'train_accs': List of training accuracies at each step.
+            - 'val_accs': List of validation accuracies at each epoch.
+            - 'epoch_steps': List of training steps corresponding to epoch boundaries.
+            - 'CL_timesteps': List of training steps corresponding to Continual Learning timesteps.
+            - 'soft_losses' (optional): List of soft losses (e.g., from LwF) at each step.
+        title (str, optional): Title for the entire figure. Defaults to None.
+        alpha (float, optional): Exponential smoothing factor for curves. Defaults to 0.05.
+        baselines (list or dict, optional): Baseline accuracies to plot as horizontal lines. 
+            Can be a list of values or a dictionary with names and values. Defaults to None.
+        show_epochs (bool, optional): If True, draws vertical lines at epoch boundaries. Defaults to False.
+        show_timesteps (bool, optional): If True, draws vertical lines at Continual Learning timestep boundaries. Defaults to False.
+
+    Returns:
+        None: Displays the generated plot.
+    """
     for metric_name in 'train_losses', 'val_losses', 'train_accs', 'val_accs', 'epoch_steps':
         assert metric_name in metrics, f"{metric_name} missing from metrics dict"
 
@@ -220,10 +282,17 @@ def training_plot(metrics,
     plt.close()
 
 
-
 def get_batch_acc(pred, y):
-    """calculates accuracy over a batch as a float
-    given predicted logits 'pred' and integer targets 'y'"""
+    """
+    Calculates accuracy for a batch of predictions.
+
+    Args:
+        pred (torch.Tensor): Predicted logits with shape (batch_size, num_classes).
+        y (torch.Tensor): Ground truth labels as integers with shape (batch_size,).
+
+    Returns:
+        float: Accuracy as a scalar value.
+    """
     return (pred.argmax(axis=1) == y).float().mean().item()
 
 def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi-task classification
@@ -231,25 +300,40 @@ def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi
                    loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
                    device = 'cuda'
                   ):
-    """runs model on entirety of validation loader,
-    with specified loss and accuracy functions,
-    and returns average loss/acc over all batches"""
+    """
+    Evaluates the model on a validation dataset.
+
+    Args:
+        multitask_model (nn.Module): The trained multitask model to evaluate.
+        val_loader (DataLoader): DataLoader for the validation dataset.
+        loss_fn (_Loss, optional): Loss function to calculate validation loss. Default is CrossEntropyLoss.
+
+    Returns:
+        tuple: Average validation loss and accuracy across all batches.
+    """
     with torch.no_grad():
         batch_val_losses, batch_val_accs = [], []
 
+        # Iterate over all batches in the validation DataLoader
         for batch in val_loader:
             vx, vy, task_ids = batch
             vx, vy = vx.to(device), vy.to(device)
 
+            # Forward pass with task-specific parameters
             vpred = multitask_model(vx, task_ids[0])
+
+            # Calculate loss and accuracy for the batch
             val_loss = loss_fn(vpred, vy)
             val_acc = get_batch_acc(vpred, vy)
 
             batch_val_losses.append(val_loss.item())
             batch_val_accs.append(val_acc)
+
+    # Return average loss and accuracy across all batches
     return np.mean(batch_val_losses), np.mean(batch_val_accs)
 
 
+# Evaluate the model on the test sets of all tasks
 def test_evaluate(multitask_model: nn.Module, 
                   selected_test_sets,  
                   task_test_sets, 
@@ -258,43 +342,69 @@ def test_evaluate(multitask_model: nn.Module,
                   baseline_taskwise_accs = None, 
                   model_name: str='', 
                   verbose=False, 
-                  batch_size=64,
+                  batch_size=16,
                   results_dir="",
-                  task_id=0
+                  task_id=0,
+                  task_metadata=None
                  ):
+    """
+    Evaluates the model on all selected test sets and optionally displays results.
+
+    Args:
+        multitask_model (nn.Module): The trained multitask model to evaluate.
+        selected_test_sets (list[Dataset]): List of test datasets for each task.
+        prev_accs (list[list[float]], optional): Previous accuracies for tracking forgetting.
+        show_taskwise_accuracy (bool, optional): If True, plots a bar chart of taskwise accuracies.
+        baseline_taskwise_accs (list[float], optional): Baseline accuracies for comparison.
+        model_name (str, optional): Name of the model to show in plots. Default is ''.
+        verbose (bool, optional): If True, prints detailed evaluation results. Default is False.
+
+    Returns:
+        list[float]: Taskwise accuracies for the selected test sets.
+    """
     if verbose:
         print(f'{model_name} evaluation on test set of all tasks:'.capitalize())
 
     task_test_losses = []
     task_test_accs = []
 
+    # Iterate over each task's test dataset
     for t, test_data in enumerate(selected_test_sets):
+        # Create a DataLoader for the current task's test dataset
         test_loader = utils.data.DataLoader(test_data,
                                        batch_size=batch_size,
                                        shuffle=True)
 
+        # Evaluate the model on the current task
         task_test_loss, task_test_acc = evaluate_model(multitask_model, test_loader)
 
         if verbose:
-            print(f'{test_data.classes}: {task_test_acc:.2%}')
+            print(f'{task_metadata[t]}: {task_test_acc:.2%}')
             if baseline_taskwise_accs is not None:
-                print(f'(baseline: {baseline_taskwise_accs[t]:.2%})')
+                print(f'(Baseline: {baseline_taskwise_accs[t]:.2%})')
 
         task_test_losses.append(task_test_loss)
         task_test_accs.append(task_test_acc)
 
+    # Calculate average test loss and accuracy across all tasks
     avg_task_test_loss = np.mean(task_test_losses)
     avg_task_test_acc = np.mean(task_test_accs)
 
     if verbose:
         print(f'\n +++ AVERAGE TASK TEST ACCURACY: {avg_task_test_acc:.2%} +++ ')
 
-
+    # Plot taskwise accuracy if enabled
     if show_taskwise_accuracy:
         bar_heights = task_test_accs + [0]*(len(task_test_sets) - len(selected_test_sets))
         # display bar plot with accuracy on each evaluation task
         plt.bar(x = range(len(task_test_sets)), height=bar_heights, zorder=1)
-        plt.xticks(range(len(task_test_sets)), [','.join(task.classes) for task in task_test_sets], rotation='vertical')
+        
+        plt.xticks(
+        range(len(task_test_sets)),
+        [','.join(task_classes.values()) for t, task_classes in task_metadata.items()],
+        rotation='vertical'
+        )
+
         plt.axhline(avg_task_test_acc, c=[0.4]*3, linestyle=':')
         plt.text(0, avg_task_test_acc+0.002, f'{model_name} (average)', c=[0.4]*3, size=8)
 
@@ -314,106 +424,143 @@ def test_evaluate(multitask_model: nn.Module,
             plt.text(0, baseline_avg+0.002, 'baseline average', c=[0.6]*3, size=8)
 
         plt.ylim([0, 1])
-        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        #plt.tight_layout(rect=[0, 0, 1, 0.95])
 
         # Save figure to wandb
-        plt.savefig(results_dir)
-        img = Image.open(results_dir)
+        file_path = os.path.join(results_dir, f'taskwise_accuracy_task_{task_id}.png')
+        plt.savefig(file_path)
+        img = Image.open(file_path)
         wandb.log({f'taskwise accuracy': wandb.Image(img), 'task': task_id})
 
         plt.close()
 
     return task_test_accs
 
-
-
-def build_task_datasets(
-    fmnist,
-    timestep_task_classes,
-    preprocess,
-    VAL_FRAC,
-    TEST_FRAC,
-    BATCH_SIZE,
-    inspect_task=None
-):
+def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, test_frac=0.1, batch_size=256):
     """
-    Builds task datasets for each timestep with train/validation/test splits and combines test datasets for final evaluation.
-    
+    Sets up dataset, dataloaders, and metadata for training and testing.
+
     Args:
-        fmnist: Dataset object containing data, labels, and class mappings.
-        timestep_task_classes (dict): Mapping of timestep to a list of classes for the task.
-        preprocess (callable): Function to preprocess images.
-        VAL_FRAC (float): Fraction of data for validation split.
-        TEST_FRAC (float): Fraction of data for test split.
-        BATCH_SIZE (int): Batch size for DataLoaders.
-        inspect_task (callable, optional): Function to inspect task datasets.
-    
+        dataset_name (str): Name of the dataset ('Split-CIFAR100', 'TinyImagenet', 'Split-MNIST').
+        data_dir (str): Directory where the dataset is stored.
+        num_tasks (int): Number of tasks to split the dataset into.
+        val_frac (float): Fraction of the data to use for validation.
+        test_frac (float): Fraction of the data to use for testing.
+        batch_size (int): Batch size for the dataloaders.
+
     Returns:
-        dict: Contains the following:
-            - 'timestep_tasks': Train/validation datasets for each timestep.
-            - 'final_test_loader': DataLoader for the combined test datasets of all tasks.
-            - 'joint_train_loader': DataLoader for the combined training datasets of all tasks.
+        dict: A dictionary containing dataloaders and metadata for training and testing.
     """
+    # Initialization
     timestep_tasks = {}
-    timestep_loaders = {}
+
     task_test_sets = []
+    task_metadata = {}
 
+    # Dataset-specific settings
+    if dataset_name == 'Split-MNIST':
+        dataset = datasets.MNIST(root=data_dir, train=True, download=True)
+        num_classes = 10
+        preprocess = transforms.Compose([
+            transforms.Grayscale(num_output_channels=3), # Convert to 3-channel grayscale
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,))
+        ])
+        task_classes_per_task = num_classes // num_tasks
+        timestep_task_classes = {
+            t: list(range(t * task_classes_per_task, (t + 1) * task_classes_per_task))
+            for t in range(num_tasks)
+        }
+
+    elif dataset_name == 'Split-CIFAR100':
+        dataset = datasets.CIFAR100(root=data_dir, train=True, download=True)
+        num_classes = 100
+        preprocess = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+        task_classes_per_task = num_classes // num_tasks
+        timestep_task_classes = {
+            t: list(range(t * task_classes_per_task, (t + 1) * task_classes_per_task))
+            for t in range(num_tasks)
+        }
+
+    elif dataset_name == 'TinyImageNet':
+        dataset = datasets.ImageFolder(os.path.join(data_dir, 'tiny-imagenet-200', 'train'))
+        num_classes = 200
+        preprocess = transforms.Compose([
+            transforms.Resize((64, 64)),
+            transforms.ToTensor(),
+            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+        ])
+        task_classes_per_task = num_classes // num_tasks
+        timestep_task_classes = {
+            t: list(range(t * task_classes_per_task, (t + 1) * task_classes_per_task))
+            for t in range(num_tasks)
+        }
+
+    else:
+        raise ValueError(f"Unsupported dataset: {dataset_name}")
+
+    # Process tasks
     for t, task_classes in timestep_task_classes.items():
-        # Map original labels to task-specific labels
-        task_class_labels = [fmnist.class_to_idx[cl] for cl in task_classes]
-        task_datapoint_idxs = [i for i, label in enumerate(fmnist.targets) if label in task_class_labels]
-        task_datapoints = [fmnist[idx] for idx in task_datapoint_idxs]
+        if dataset_name == 'Split-MNIST':
+            task_indices = [i for i, label in enumerate(dataset.targets) if label in task_classes]
+            task_images = [Image.fromarray(dataset.data[i].numpy(), mode='L') for i in task_indices]
+            task_labels = [label for i, label in enumerate(dataset.targets) if label in task_classes]
 
-        class_to_idx = {task_classes[i]: i for i in range(len(task_classes))}
-        task_images = [preprocess(img) for (img, label) in task_datapoints]
-        task_labels = [class_to_idx[fmnist.classes[label]] for (img, label) in task_datapoints]
-        task_ids = [t] * len(task_datapoints)
+        elif dataset_name == 'Split-CIFAR100':
+            task_indices = [i for i, label in enumerate(dataset.targets) if label in task_classes]
+            task_images = [Image.fromarray(dataset.data[i]) for i in task_indices]
+            task_labels = [label for i, label in enumerate(dataset.targets) if label in task_classes]
 
-        task_image_tensor = torch.stack(task_images)
-        task_label_tensor = torch.tensor(task_labels, dtype=torch.long)
-        task_id_tensor = torch.tensor(task_ids, dtype=torch.long)
+        elif dataset_name == 'TinyImageNet':
+            task_indices = [i for i, (_, label) in enumerate(dataset.samples) if label in task_classes]
+            task_images = [dataset[i][0] for i in task_indices]
+            task_labels = [label for i, (_, label) in enumerate(dataset.samples) if label in task_classes]
 
-        task_data = TensorDataset(task_image_tensor, task_label_tensor, task_id_tensor)
+        # Map old labels to 0-based labels for the task
+        class_to_idx = {orig: idx for idx, orig in enumerate(task_classes)}
+        task_labels = [class_to_idx[int(label)] for label in task_labels]
 
-        # Train/validation/test split
-        train_frac = 1.0 - VAL_FRAC - TEST_FRAC
-        task_train, task_val, task_test = random_split(task_data, [int(train_frac * len(task_data)),
-                                                                   int(VAL_FRAC * len(task_data)),
-                                                                   int(TEST_FRAC * len(task_data))])
 
-        # Set dataset attributes
-        for dataset in (task_train, task_val, task_test):
-            dataset.classes = task_classes
-            dataset.num_classes = len(task_classes)
-            dataset.class_to_idx = class_to_idx
-            dataset.task_id = t
+        # Create tensors
+        task_images_tensor = torch.stack([preprocess(img) for img in task_images])
+        task_labels_tensor = torch.tensor(task_labels, dtype=torch.long)
+        task_ids_tensor = torch.full((len(task_labels_tensor),), t, dtype=torch.long)
 
-        # Inspect samples if inspection function is provided
-        if inspect_task:
-            print(f'Time {t}: Task ID {t}, {len(task_train)} train, {len(task_val)} validation, {len(task_test)} test')
-            inspect_task(task_train)
+        # TensorDataset
+        task_dataset = TensorDataset(task_images_tensor, task_labels_tensor, task_ids_tensor)
 
-        # Add datasets to task dictionary and test sets
-        timestep_tasks[t] = (task_train, task_val)
-        task_test_sets.append(task_test)
+        # Train/Validation/Test split
+        train_size = int((1 - val_frac - test_frac) * len(task_dataset))
+        val_size = int(val_frac * len(task_dataset))
+        test_size = len(task_dataset) - train_size - val_size
+        train_set, val_set, test_set = random_split(task_dataset, [train_size, val_size, test_size])
 
-    # Combine all task test datasets for final evaluation
+        # Store datasets and metadata
+        timestep_tasks[t] = (train_set, val_set)
+        task_test_sets.append(test_set)
+        if dataset_name == 'TinyImagenet':
+            task_metadata[t] = {
+                idx: os.path.basename(dataset.classes[orig]) for orig, idx in class_to_idx.items()
+            }
+        else:
+            task_metadata[t] = {
+                idx: dataset.classes[orig] if hasattr(dataset, 'classes') else str(orig)
+                for orig, idx in class_to_idx.items()
+            }
+
+    # Final datasets
     final_test_data = ConcatDataset(task_test_sets)
-    final_test_loader = DataLoader(final_test_data, batch_size=BATCH_SIZE, shuffle=True)
-    print(f'Final test set size (containing all tasks): {len(final_test_data)}')
-
-    # Combine all task training datasets for joint training
-    joint_train_data = ConcatDataset([train for train, _ in timestep_tasks.values()])
-    joint_train_loader = DataLoader(joint_train_data, batch_size=BATCH_SIZE, shuffle=True)
-    print(f'Joint training set size (containing all tasks): {len(joint_train_data)}')
+    final_test_loader = DataLoader(final_test_data, batch_size=batch_size, shuffle=True)
 
     return {
         'timestep_tasks': timestep_tasks,
         'final_test_loader': final_test_loader,
-        'joint_train_loader': joint_train_loader,
+        'task_metadata': task_metadata,
         'task_test_sets': task_test_sets
     }
-
 
 import torch
 
