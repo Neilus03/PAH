@@ -175,9 +175,9 @@ class ConvBackbone(nn.Module):
         resnet = resnet50(pretrained=pretrained)
         print("resnet:", resnet)
         #Freeze the first few layers
-        for name, param in resnet.named_parameters():
-            if 'layer3' not in name and 'layer4' not in name and 'fc' not in name:
-                param.requires_grad = False
+        # for name, param in resnet.named_parameters():
+        #     if 'layer3' not in name and 'layer4' not in name and 'fc' not in name:
+        #         param.requires_grad = False
             
             
         
