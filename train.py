@@ -94,7 +94,7 @@ backbone = 'resnet50'                  # ResNet50 backbone. others: ['mobilenetv
 task_head_projection_size = 256          # Even larger hidden layer in task head
 hyper_hidden_features = 256             # Larger hypernetwork hidden layer size
 hyper_hidden_layers = 4                 # Deeper hypernetwork
-channels = 1 if dataset == 'Split-MNIST' else 3 # Number of channels in the input images
+
 
 
 # Initialize the model with the new configurations
@@ -105,7 +105,6 @@ model = HyperCMTL(
     task_head_num_classes=len(task_metadata[0]),
     hyper_hidden_features=hyper_hidden_features,
     hyper_hidden_layers=hyper_hidden_layers,
-    channels = channels, 
     device=device,
     std=0.01
 ).to(device)
@@ -143,7 +142,7 @@ prev_test_accs = []
 
 print("Starting training")
 
-with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}') as run:
+with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as run:
 
     # outer loop over each task, in sequence
     for t, (task_train, task_val) in timestep_tasks.items():
