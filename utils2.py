@@ -1,4 +1,4 @@
-import numpy as np
+'''import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import torch.nn as nn
@@ -504,4 +504,4 @@ class logger:
     
     def log(self, message):
         self.logg.info(message)
-        print(message)
+        print(message)'''

@@ -1,4 +1,4 @@
-import torch
+'''import torch
 from torch import nn, utils
 import torch.nn.functional as F
 from torchvision import models, datasets, transforms
@@ -247,4 +247,4 @@ with wandb.init(project='HyperCMTL', name='HyperCMTL') as run:
     final_avg_test_acc = np.mean(test_accs)
     logger.log(f'Final average test accuracy: {final_avg_test_acc:.2%}')
     wandb.log({'val_accuracy': final_avg_test_acc, 'epoch': e, 'task_id': t})
-    wandb.summary['final_avg_test_acc'] = final_avg_test_acc
+    wandb.summary['final_avg_test_acc'] = final_avg_test_acc'''
