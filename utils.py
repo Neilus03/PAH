@@ -574,6 +574,13 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
         test_size = len(task_dataset) - train_size - val_size
         train_set, val_set, test_set = random_split(task_dataset, [train_size, val_size, test_size])
 
+        for dataset in (train_set, val_set, test_set):
+            #Set dataset attributes
+            dataset.classes = task_classes
+            dataset.class_to_idx = class_to_idx
+            dataset.task_id = t
+            dataset.num_classes = len(task_classes)
+
         # Store datasets and metadata
         timestep_tasks[t] = (train_set, val_set)
         task_test_sets.append(test_set)
@@ -590,7 +597,8 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
     # Final datasets
     final_test_data = ConcatDataset(task_test_sets)
     final_test_loader = DataLoader(final_test_data, batch_size=batch_size, shuffle=True)
-
+    print(f"Final test size (containing all tasks): {len(final_test_data)}")
+    
     return {
         'timestep_tasks': timestep_tasks,
         'final_test_loader': final_test_loader,
