@@ -252,17 +252,19 @@ class HyperCMTL_prototype_attention(HyperCMTL):
         out = self.hypernet(reduced_attended_output)
         return out 
     
-    def forward(self, support_set, task_idx, **kwargs):
+    def forward(self, support_set, prototypes, **kwargs):
         backbone_out = self.backbone(support_set)
+        # print(prototypes.size())
+        prototype_emb = self.backbone(prototypes)
         
-        prototype_emb = backbone_out[task_idx, :]
-        task_idx_tensor = torch.tensor(task_idx)
-        others_emb = backbone_out[~torch.isin(torch.arange(backbone_out.size(0)), task_idx_tensor)]
+        # prototype_emb = backbone_out[task_idx, :]
+        # task_idx_tensor = torch.tensor(task_idx)
+        # others_emb = backbone_out[~torch.isin(torch.arange(backbone_out.size(0)), task_idx_tensor)]
         
-        input_task_head = backbone_out[~torch.isin(torch.arange(backbone_out.size(0)), task_idx_tensor)]
+        # input_task_head = backbone_out[~torch.isin(torch.arange(backbone_out.size(0)), task_idx_tensor)]
         
-        params = self.get_params(prototype_emb, others_emb)
-        task_head_out = self.task_head(input_task_head, params=params)
+        params = self.get_params(prototype_emb, backbone_out)
+        task_head_out = self.task_head(backbone_out, params=params)
         
         return task_head_out.squeeze(0)
     

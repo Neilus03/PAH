@@ -32,7 +32,7 @@ from tqdm import tqdm
 import os
 
 # Functions from utils to help with training and evaluation
-from utils import inspect_batch, test_evaluate, training_plot, setup_dataset, inspect_task, distillation_output_loss, evaluate_model, get_batch_acc, logger, evaluate_model_prototypes
+from utils import inspect_batch, test_evaluate, training_plot, setup_dataset_prototype, inspect_task, distillation_output_loss, evaluate_model, get_batch_acc, logger, evaluate_model_prototypes
 
 # Import the HyperCMTL model architecture
 from hypernetwork import HyperCMTL, HyperCMTL_prototype, HyperCMTL_prototype_attention
@@ -54,6 +54,10 @@ from torch.utils.data import Sampler
 from collections import defaultdict
 import random
 from torch.utils.data import Sampler
+
+from dataset import Dataset_Prototypes
+from torch.utils.data import DataLoader
+from torch.utils.data import random_split
 
 # class MinimumClassSampler(Sampler):
 #     def __init__(self, dataset, num_classes, batch_size):
@@ -103,7 +107,7 @@ dataset = "Split-CIFAR100" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
 NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
 
 ### training hyperparameters:
-EPOCHS_PER_TIMESTEP = 1
+EPOCHS_PER_TIMESTEP = 7
 lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
@@ -123,12 +127,30 @@ logger.log(f'Training hyperparameters: EPOCHS_PER_TIMESTEP={EPOCHS_PER_TIMESTEP}
 logger.log(f'Training on device: {device}')
 
 ### Define preprocessing transform and load a batch to inspect it:
-data = setup_dataset(dataset, data_dir='./data', num_tasks=NUM_TASKS, val_frac=VAL_FRAC, test_frac=TEST_FRAC, batch_size=BATCH_SIZE)
+data = setup_dataset_prototype(dataset, data_dir='./data', num_tasks=NUM_TASKS, val_frac=VAL_FRAC, test_frac=TEST_FRAC, batch_size=BATCH_SIZE)
 
 timestep_tasks = data['timestep_tasks']
 final_test_loader = data['final_test_loader']
 task_metadata = data['task_metadata']
 task_test_sets = data['task_test_sets']
+images_per_class = data['images_per_class']
+classes_per_task = data['classes_per_task']
+
+train_split = 6
+val_split = 2
+test_split = 2
+
+images_train = {k:[im for i, im in enumerate(images_per_class[k]['images']) if i < train_split] for k in images_per_class.keys() }
+images_val = {k:[im for i, im in enumerate(images_per_class[k]['images']) if i >= train_split and i < train_split + val_split] for k in images_per_class.keys() }
+images_test = {k:[im for i, im in enumerate(images_per_class[k]['images']) if i >= train_split + val_split] for k in images_per_class.keys() }
+
+train_prototypes = Dataset_Prototypes(images_train, classes_per_task)
+val_prototypes = Dataset_Prototypes(images_val, classes_per_task)
+test_prototypes = Dataset_Prototypes(images_test, classes_per_task)
+
+train_prototypes_dataloader = DataLoader(train_prototypes, batch_size=1, shuffle=True)
+val_prototypes_dataloader = DataLoader(val_prototypes, batch_size=1, shuffle=True)
+test_prototypes_dataloader = DataLoader(test_prototypes, batch_size=1, shuffle=True)
 
 # More complex model configuration
 backbone = 'resnet50'                  # ResNet50 backbone. others: ['mobilenetv2', 'efficientnetb0', 'vit'] #vit not yet working
@@ -185,7 +207,8 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
 
     inputs_hyper_x_task = {}
     # outer loop over each task, in sequence
-    for t, (task_train, task_val) in timestep_tasks.items():
+    for (t, (task_train, task_val)), prototypes in zip(timestep_tasks.items(), train_prototypes_dataloader):
+        prototypes = prototypes.to(device)[0]
         logger.log(f"Training on task id: {t}  (classification between: {task_metadata[t]})")
 
         #if verbose:
@@ -209,34 +232,27 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
                 x, y = x.to(device), y.to(device)
                 task_id = task_ids[0]
                 
-                input_hypernet = []
-                for i in range(len(task_metadata[t])):
-                    idx_sample_class_i = (y == i).nonzero()[0].item()
-                    input_hypernet.append(idx_sample_class_i)
+                if task_id not in inputs_hyper_x_task:
+                    inputs_hyper_x_task[task_id.item()] = prototypes
                 
-                if t not in inputs_hyper_x_task:
-                    inputs_hyper_x_task[t] = torch.concat([x[idx] for idx in input_hypernet], dim=0)
-                    # inputs_hyper_x_task[t] = torch.concat([x[idx_sample_class_0], x[idx_sample_class_1]], dim=0)
-                    print(inputs_hyper_x_task[t].shape)
-                    
                 # get the predictions from the model
-                pred = model(x, input_hypernet).squeeze(0)
+                pred = model(x, prototypes).squeeze(0)
                 # logger.log('pred shape', pred.shape, 'y shape', y.shape)
-                input_hypernet_tensor = torch.tensor(input_hypernet, device=device)
-                y_no_hyper = y[~torch.isin(torch.arange(y.size(0), device=device), input_hypernet_tensor)]
+                # input_hypernet_tensor = torch.tensor(input_hypernet, device=device)
+                # y_no_hyper = y[~torch.isin(torch.arange(y.size(0), device=device), input_hypernet_tensor)]
                     
-                hard_loss = loss_fn(pred, y_no_hyper)
+                hard_loss = loss_fn(pred, y)
 
                 #if previous model exists, calculate distillation loss
                 soft_loss = torch.tensor(0.0).to(device)
                 if previous_model is not None:
                     for old_task_id in range(t):
                         with torch.no_grad():
-                            print(inputs_hyper_x_task[old_task_id].shape, x.shape)
-                            x_plus_samples = torch.concat([inputs_hyper_x_task[old_task_id].unsqueeze(1), x], dim=0)
-                            input_hypernet = [0, 1]
-                            old_pred = previous_model(x_plus_samples, input_hypernet)
-                        new_prev_pred = model(x_plus_samples, input_hypernet)
+                            # print(inputs_hyper_x_task[old_task_id].shape, x.shape)
+                            # x_plus_samples = torch.concat([inputs_hyper_x_task[old_task_id].unsqueeze(1), x], dim=0)
+                            # print(inputs_hyper_x_task)
+                            old_pred = previous_model(x, inputs_hyper_x_task[old_task_id])
+                        new_prev_pred = model(x, inputs_hyper_x_task[old_task_id])
                         soft_loss += distillation_output_loss(new_prev_pred, old_pred, temperature).mean().to(device)
                     
                 total_loss = hard_loss + stability * soft_loss
@@ -246,9 +262,9 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
                 total_loss.backward()
                 opt.step()
 
-                accuracy_batch = get_batch_acc(pred, y_no_hyper)
+                accuracy_batch = get_batch_acc(pred, y)
                 
-                # wandb.log({'hard_loss': hard_loss.item(), 'soft_loss': soft_loss.item(), 'train_loss': total_loss.item(), 'epoch': e, 'task_id': t, 'batch_idx': batch_idx, 'train_accuracy': accuracy_batch})
+                wandb.log({'hard_loss': hard_loss.item(), 'soft_loss': soft_loss.item(), 'train_loss': total_loss.item(), 'epoch': e, 'task_id': t, 'batch_idx': batch_idx, 'train_accuracy': accuracy_batch})
 
                 # track loss and accuracy:
                 epoch_train_losses.append(hard_loss.item())
@@ -260,8 +276,10 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
                     # show loss/acc of this batch in progress bar:
                     progress_bar.set_description((f'E{e} batch loss:{hard_loss:.2f}, batch acc:{epoch_train_accs[-1]:>5.1%}'))
 
+            # print("Total datasets", len(val_prototypes_dataloader.dataset))
+            prototypes_val = val_prototypes_dataloader.dataset[t].to(device)
             # evaluate after each epoch on the current task's validation set:
-            avg_val_loss, avg_val_acc = evaluate_model_prototypes(model, val_loader, loss_fn)
+            avg_val_loss, avg_val_acc = evaluate_model_prototypes(model, val_loader, loss_fn, prototypes = prototypes_val, device = device)
 
             wandb.log({'val_loss': avg_val_loss, 'val_accuracy': avg_val_acc, 'epoch': e, 'task_id': t})
 
@@ -306,7 +324,8 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
                             results_dir=results_dir,
                             task_id=t,
                             task_metadata=task_metadata,
-                            using_prototypes=True
+                            using_prototypes=True,
+                            prototypes_dataloader=test_prototypes_dataloader
                             )
         
         prev_test_accs.append(test_accs)
