@@ -330,7 +330,7 @@ class TaskHead(MetaModule):
         return optimizer_list
 
 
-class MultitaskModel(nn.Module):
+'''class MultitaskModel(nn.Module):
     def __init__(self, backbone: nn.Module,
                  device="cuda"):
         super().__init__()
@@ -378,4 +378,4 @@ class MultitaskModel(nn.Module):
     def num_task_heads(self):
         return len(self.task_heads)
     
-    
+    '''
