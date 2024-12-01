@@ -82,14 +82,15 @@ class HyperCMTL(nn.Module):
                                   device=device)
 
         # Hypernetwork
-        hn_in = 64  # Input size for hypernetwork embedding
-        self.hypernet = HyperNetwork(hyper_in_features=hn_in,
+        self.backbone_emb_size = self.backbone.num_features
+        self.hn_in = 64  # Input size for hypernetwork embedding
+        self.hypernet = HyperNetwork(hyper_in_features=self.hn_in,
                                      hyper_hidden_layers=hyper_hidden_layers,
                                      hyper_hidden_features=hyper_hidden_features,
                                      hypo_module=self.task_head,
                                      activation='relu')
 
-        self.hyper_emb = nn.Embedding(self.num_instances, hn_in)
+        self.hyper_emb = nn.Embedding(self.num_instances, self.hn_in)
         nn.init.normal_(self.hyper_emb.weight, mean=0, std=std)
 
     def get_params(self, task_idx):
@@ -129,6 +130,54 @@ class HyperCMTL(nn.Module):
         optimizer_list.extend(self.task_head.get_optimizer_list())
         print("optimizer_list", optimizer_list)
         return optimizer_list
+
+class HyperCMTL_prototype(HyperCMTL):
+    def __init__(self,
+                 num_instances=1,
+                 backbone='resnet50',  # Backbone architecture
+                 task_head_projection_size=64,             # Task head hidden layer size
+                 task_head_num_classes=2,                  # Task head output size
+                 hyper_hidden_features=256,                # Hypernetwork hidden layer size
+                 hyper_hidden_layers=2,                    # Hypernetwork number of layers
+                 device='cuda',
+                 channels=1,
+                 img_size=[32, 32],
+                 std=0.01):
+        
+        super().__init__(num_instances=num_instances,
+                            backbone=backbone,
+                            task_head_projection_size=task_head_projection_size,
+                            task_head_num_classes=task_head_num_classes,
+                            hyper_hidden_features=hyper_hidden_features,
+                            hyper_hidden_layers=hyper_hidden_layers,
+                            device=device,
+                            channels=channels,
+                            img_size=img_size,
+                            std=std)
+
+        self.hyper_emb = nn.Linear(self.backbone_emb_size, self.hn_in//2)
+        nn.init.normal_(self.hyper_emb.weight, mean=0, std=std)
+
+    def get_params(self, backbone_out):
+        input_hyper_reduced = self.hyper_emb(backbone_out)
+        input_hyper_reduced = input_hyper_reduced.flatten()
+        
+        out = self.hypernet(input_hyper_reduced)
+        return out 
+    
+    def forward(self, support_set, task_idx, **kwargs):
+        backbone_out = self.backbone(support_set)
+        
+        input_hyper = backbone_out[task_idx, :]
+        
+        task_idx_tensor = torch.tensor(task_idx)
+        input_task_head = backbone_out[~torch.isin(torch.arange(backbone_out.size(0)), task_idx_tensor)]
+        
+        params = self.get_params(input_hyper)
+        task_head_out = self.task_head(input_task_head, params=params)
+        
+        return task_head_out.squeeze(0)
+    
 
 class TaskHead(MetaModule):
     def __init__(self, input_size: int, # number of features in the backbone's output

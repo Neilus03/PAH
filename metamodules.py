@@ -291,14 +291,21 @@ class HyperNetwork(nn.Module):
             self.param_shapes.append(param.size())
 
             # Create an FCBlock for each parameter
-            hn = FCBlock(
-                in_features=hyper_in_features, 
-                out_features=int(torch.prod(torch.tensor(param.size()))),
-                num_hidden_layers=hyper_hidden_layers, 
-                hidden_features=hyper_hidden_features,
-                outermost_linear=True,
-                nonlinearity=activation
-            )
+            if 'bias' in name:
+                hn = FCBlock(in_features=hyper_in_features, 
+                    out_features=int(torch.prod(torch.tensor(param.size()))),
+                    num_hidden_layers=0, 
+                    hidden_features=hyper_in_features,
+                    outermost_linear=True,
+                    nonlinearity=activation)
+            
+            else:
+                hn = FCBlock(in_features=hyper_in_features, 
+                        out_features=int(torch.prod(torch.tensor(param.size()))),
+                        num_hidden_layers=hyper_hidden_layers, 
+                        hidden_features=hyper_hidden_features,
+                        outermost_linear=True,
+                        nonlinearity=activation)
 
             # Apply custom initialization based on the parameter type
             if 'weight' in name:
