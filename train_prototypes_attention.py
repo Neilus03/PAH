@@ -210,7 +210,7 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
                 task_id = task_ids[0]
                 
                 input_hypernet = []
-                for i in range(len(task_metadata)):
+                for i in range(len(task_metadata[t])):
                     idx_sample_class_i = (y == i).nonzero()[0].item()
                     input_hypernet.append(idx_sample_class_i)
                 
