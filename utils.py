@@ -333,6 +333,38 @@ def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi
     return np.mean(batch_val_losses), np.mean(batch_val_accs)
 
 
+def evaluate_model_prototypes(multitask_model: nn.Module,  # trained model capable of multi-task classification
+                   val_loader: utils.data.DataLoader,  # task-specific data to evaluate on
+                   loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
+                   device = 'cuda'
+                  ):
+    """runs model on entirety of validation loader,
+    with specified loss and accuracy functions,
+    and returns average loss/acc over all batches"""
+    with torch.no_grad():
+        batch_val_losses, batch_val_accs = [], []
+
+        for batch in val_loader:
+            vx, vy, task_ids = batch
+            vx, vy = vx.to(device), vy.to(device)
+
+            idx_sample_class_0 = (vy == 0).nonzero()[0].item()
+            idx_sample_class_1 = (vy == 1).nonzero()[0].item()
+
+            input_hypernet = [idx_sample_class_0, idx_sample_class_1]
+
+            input_hypernet_tensor = torch.tensor(input_hypernet, device=device)
+            vy_no_hyper = vy[~torch.isin(torch.arange(vy.size(0), device=device), input_hypernet_tensor)]
+
+            vpred = multitask_model(vx, input_hypernet)
+            val_loss = loss_fn(vpred, vy_no_hyper)
+            val_acc = get_batch_acc(vpred, vy_no_hyper)
+
+            batch_val_losses.append(val_loss.item())
+            batch_val_accs.append(val_acc)
+    return np.mean(batch_val_losses), np.mean(batch_val_accs)
+
+
 # Evaluate the model on the test sets of all tasks
 def test_evaluate(multitask_model: nn.Module, 
                   selected_test_sets,  
@@ -345,7 +377,8 @@ def test_evaluate(multitask_model: nn.Module,
                   batch_size=16,
                   results_dir="",
                   task_id=0,
-                  task_metadata=None
+                  task_metadata=None,
+                  using_prototypes=False
                  ):
     """
     Evaluates the model on all selected test sets and optionally displays results.
@@ -376,7 +409,10 @@ def test_evaluate(multitask_model: nn.Module,
                                        shuffle=True)
 
         # Evaluate the model on the current task
-        task_test_loss, task_test_acc = evaluate_model(multitask_model, test_loader)
+        if using_prototypes:
+            task_test_loss, task_test_acc = evaluate_model_prototypes(multitask_model, test_loader)
+        else:
+            task_test_loss, task_test_acc = evaluate_model(multitask_model, test_loader)
 
         if verbose:
             print(f'{task_metadata[t]}: {task_test_acc:.2%}')
@@ -551,6 +587,135 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
                 for orig, idx in class_to_idx.items()
             }
 
+    # Final datasets
+    final_test_data = ConcatDataset(task_test_sets)
+    final_test_loader = DataLoader(final_test_data, batch_size=batch_size, shuffle=True)
+
+    return {
+        'timestep_tasks': timestep_tasks,
+        'final_test_loader': final_test_loader,
+        'task_metadata': task_metadata,
+        'task_test_sets': task_test_sets
+    }
+
+
+import random
+def setup_dataset_prototypes(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, test_frac=0.1, batch_size=256):
+    """
+    Sets up dataset, dataloaders, and metadata for training and testing.
+    Args:
+        dataset_name (str): Name of the dataset ('Split-CIFAR100', 'TinyImagenet', 'Split-MNIST').
+        data_dir (str): Directory where the dataset is stored.
+        num_tasks (int): Number of tasks to split the dataset into.
+        val_frac (float): Fraction of the data to use for validation.
+        test_frac (float): Fraction of the data to use for testing.
+        batch_size (int): Batch size for the dataloaders.
+    Returns:
+        dict: A dictionary containing dataloaders and metadata for training and testing.
+    """
+    timestep_tasks = {}
+    task_test_sets = []
+    task_metadata = {}
+    dataset2_classes = {}
+
+    # Dataset-specific settings
+    if dataset_name == 'Split-MNIST':
+        dataset = datasets.MNIST(root=data_dir, train=True, download=True)
+        num_classes = 10
+        preprocess = transforms.Compose([
+            transforms.Grayscale(num_output_channels=3), # Convert to 3-channel grayscale
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,))
+        ])
+        
+    elif dataset_name == 'Split-CIFAR100':
+        dataset = datasets.CIFAR100(root=data_dir, train=True, download=True)
+        num_classes = 100
+        preprocess = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+        
+    elif dataset_name == 'TinyImageNet':
+        dataset = datasets.ImageFolder(os.path.join(data_dir, 'tiny-imagenet-200', 'train'))
+        num_classes = 200
+        preprocess = transforms.Compose([
+            transforms.Resize((64, 64)),
+            transforms.ToTensor(),
+            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+        ])
+    else:
+        raise ValueError(f"Unsupported dataset: {dataset_name}")
+    
+    # Organize images by class
+    class_images = {i: [] for i in range(num_classes)}
+    if dataset_name == 'Split-MNIST':
+        for i, label in enumerate(dataset.targets):
+            class_images[label].append(i)
+    elif dataset_name == 'Split-CIFAR100':
+        for i, label in enumerate(dataset.targets):
+            class_images[label].append(i)
+    elif dataset_name == 'TinyImageNet':
+        for i, (_, label) in enumerate(dataset.samples):
+            class_images[label].append(i)
+
+    # Split images into dataset 1 (90%) and dataset 2 (10%)
+    for class_id, images in class_images.items():
+        dataset2_classes[class_id] = images[:len(images) // 10]  # Take 10% for dataset 2
+        class_images[class_id] = images[len(images) // 10:]  # Remaining 90% goes to dataset 1
+    
+    # Process tasks
+    for t in range(num_tasks):
+        task_classes = list(range(t * (num_classes // num_tasks), (t + 1) * (num_classes // num_tasks)))
+        task_images = []
+        task_labels = []
+        task_images_dataset2 = []
+        task_labels_dataset2 = []
+        
+        # Dataset 1: 90% of images
+        for class_id in task_classes:
+            images = class_images[class_id]
+            task_images.extend([Image.fromarray(dataset.data[i]) for i in images])
+            task_labels.extend([class_id] * len(images))
+
+        # Dataset 2: 10% of images (1 image per class)
+        for class_id in task_classes:
+            images = dataset2_classes[class_id]
+            task_images_dataset2.extend([Image.fromarray(dataset.data[i]) for i in images])
+            task_labels_dataset2.extend([class_id] * len(images))
+        
+        # Create tensor datasets
+        task_images_tensor = torch.stack([preprocess(img) for img in task_images])
+        task_labels_tensor = torch.tensor(task_labels, dtype=torch.long)
+        task_ids_tensor = torch.full((len(task_labels_tensor),), t, dtype=torch.long)
+        
+        task_images_tensor_dataset2 = torch.stack([preprocess(img) for img in task_images_dataset2])
+        task_labels_tensor_dataset2 = torch.tensor(task_labels_dataset2, dtype=torch.long)
+        task_ids_tensor_dataset2 = torch.full((len(task_labels_tensor_dataset2),), t, dtype=torch.long)
+
+        # TensorDatasets
+        task_dataset = TensorDataset(task_images_tensor, task_labels_tensor, task_ids_tensor)
+        task_dataset2 = TensorDataset(task_images_tensor_dataset2, task_labels_tensor_dataset2, task_ids_tensor_dataset2)
+
+        # Train/Validation/Test split for Dataset 1
+        train_size = int((1 - val_frac - test_frac) * len(task_dataset))
+        val_size = int(val_frac * len(task_dataset))
+        test_size = len(task_dataset) - train_size - val_size
+        train_set, val_set, test_set = random_split(task_dataset, [train_size, val_size, test_size])
+
+        # Train/Validation/Test split for Dataset 2 (same split as Dataset 1)
+        train_size_dataset2 = int((1 - val_frac - test_frac) * len(task_dataset2))
+        val_size_dataset2 = int(val_frac * len(task_dataset2))
+        test_size_dataset2 = len(task_dataset2) - train_size_dataset2 - val_size_dataset2
+        train_set_dataset2, val_set_dataset2, test_set_dataset2 = random_split(task_dataset2, [train_size_dataset2, val_size_dataset2, test_size_dataset2])
+
+        # Store datasets and metadata
+        timestep_tasks[t] = {
+            'dataset1': (train_set, val_set),
+            'dataset2': (train_set_dataset2, val_set_dataset2)
+        }
+        task_test_sets.append(test_set)
+        
     # Final datasets
     final_test_data = ConcatDataset(task_test_sets)
     final_test_loader = DataLoader(final_test_data, batch_size=batch_size, shuffle=True)
