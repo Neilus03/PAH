@@ -7,7 +7,7 @@ from torch import nn, utils
 import torch.nn.functional as F
 
 # DataLoader for creating training and validation dataloaders
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, BatchSampler
 
 # Torchvision for datasets and transformations
 from torchvision import models, datasets, transforms
@@ -32,10 +32,10 @@ from tqdm import tqdm
 import os
 
 # Functions from utils to help with training and evaluation
-from utils import inspect_batch, test_evaluate, training_plot, setup_dataset, inspect_task, distillation_output_loss, evaluate_model, get_batch_acc, logger
+from utils import inspect_batch, test_evaluate, training_plot, setup_dataset, inspect_task, distillation_output_loss, evaluate_model, evaluate_model_prototypes, get_batch_acc, logger
 
 # Import the HyperCMTL model architecture
-from hypernetwork import HyperCMTL
+from hypernetwork import HyperCMTL, HyperCMTL_prototype
 
 # Import the wandb library for logging metrics and visualizations
 import wandb
@@ -47,6 +47,11 @@ from copy import deepcopy # Deepcopy for copying models
 import time
 import logging
 import pdb
+
+
+import random
+from torch.utils.data import Sampler
+
 
 torch.manual_seed(0)
 
@@ -62,7 +67,7 @@ dataset = "Split-CIFAR100" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
 NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
 
 ### training hyperparameters:
-EPOCHS_PER_TIMESTEP = 3
+EPOCHS_PER_TIMESTEP = 1
 lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
@@ -85,9 +90,11 @@ logger.log(f'Training on device: {device}')
 data = setup_dataset(dataset, data_dir='./data', num_tasks=NUM_TASKS, val_frac=VAL_FRAC, test_frac=TEST_FRAC, batch_size=BATCH_SIZE)
 
 timestep_tasks = data['timestep_tasks']
+timestep_task_classes = data['timestep_task_classes']
 final_test_loader = data['final_test_loader']
 task_metadata = data['task_metadata']
 task_test_sets = data['task_test_sets']
+images_per_class = data['images_per_class']
 
 # More complex model configuration
 backbone = 'resnet50'                  # ResNet50 backbone. others: ['mobilenetv2', 'efficientnetb0', 'vit'] #vit not yet working
@@ -98,7 +105,7 @@ hyper_hidden_layers = 4                 # Deeper hypernetwork
 
 
 # Initialize the model with the new configurations
-model = HyperCMTL(
+model = HyperCMTL_prototype(
     num_instances=len(task_metadata),
     backbone=backbone,
     task_head_projection_size=task_head_projection_size,
@@ -142,6 +149,66 @@ prev_test_accs = []
 
 print("Starting training")
 
+
+import random
+import torch
+from torch.utils.data import Sampler
+
+import torch
+import random
+from torch.utils.data import Sampler
+
+class MinimumSubsetBatchSampler(Sampler):
+    def __init__(self, dataset, batch_size, task_classes, images_per_class):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.task_classes = task_classes
+        self.images_per_class = images_per_class
+
+        print("Images per class:", self.images_per_class.keys())
+
+        for class_idx in self.task_classes:
+            if len(self.images_per_class[class_idx]) == 0:
+                raise ValueError(f"No samples found for class {class_idx}.")
+
+        self.class_to_indices = {
+            class_idx: self.images_per_class[class_idx].copy()
+            for class_idx in self.task_classes
+        }
+
+        for class_idx in self.task_classes:
+            random.shuffle(self.class_to_indices[class_idx])
+
+    def __iter__(self):
+        class_iterators = {class_idx: iter(indices) for class_idx, indices in self.class_to_indices.items()}
+
+        while True:
+            batch = []
+
+            try:
+                for class_idx in self.task_classes:
+                    batch.append(next(class_iterators[class_idx]))
+            except StopIteration:
+                break
+
+            remaining_batch_size = self.batch_size - len(batch)
+            if remaining_batch_size > 0:
+                all_class_indices = [idx for class_indices in self.class_to_indices.values() for idx in class_indices]
+                available_indices = list(set(all_class_indices) - set(batch))
+                if remaining_batch_size > len(available_indices):
+                    sampled = available_indices
+                else:
+                    sampled = random.sample(available_indices, remaining_batch_size)
+                batch += sampled
+
+            #print("Batch:", batch)
+            yield batch
+
+    def __len__(self):
+        min_class_len = min(len(indices) for indices in self.class_to_indices.values())
+        return min_class_len
+    
+    
 with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as run:
 
     # outer loop over each task, in sequence
@@ -150,12 +217,43 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
 
         #if verbose:
             #inspect_task(task_train=task_train, task_metadata=task_metadata)
+            
+        # Build images_per_class_task for task_train
+        images_per_class_task = {class_idx: [] for class_idx in timestep_task_classes[t]}
+        print("Images per class task:", images_per_class_task)
+        
+        
+        for idx in range(len(task_train)):
+            _, label, _ = task_train[idx]
+            images_per_class_task[int(label+t*10)].append(idx)
+            #print('Images per class task:', images_per_class_task)
+        # Check that each class has at least one sample
+        for class_idx, indices in images_per_class_task.items():
+            if not indices:
+                raise ValueError(f"No samples found for class {class_idx} in task {t}.")
+        
+        # Create a BatchSampler for the current task
+        batch_sampler = MinimumSubsetBatchSampler(
+            dataset=task_train,
+            batch_size=BATCH_SIZE,
+            task_classes=timestep_task_classes[t],
+            images_per_class=images_per_class_task
+        )
+        
+        # Create the DataLoader with the corrected sampler
+        train_loader = DataLoader(
+            task_train,
+            batch_sampler=batch_sampler
+        )
+        
+        # Validation DataLoader remains unchanged
+        val_loader = DataLoader(
+            task_val,
+            batch_size=BATCH_SIZE,
+            shuffle=True
+        )
 
-        # build train and validation loaders for the current task:
-        train_loader, val_loader = [utils.data.DataLoader(data,
-                                        batch_size=BATCH_SIZE,
-                                        shuffle=True)
-                                        for data in (task_train, task_val)]
+        #print(next(iter(train_loader)))
 
         # inner loop over the current task:
         for e in range(EPOCHS_PER_TIMESTEP):
@@ -165,18 +263,36 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
             progress_bar = tqdm(train_loader, ncols=100) if show_progress else train_loader
             num_batches = len(train_loader)
             for batch_idx, batch in enumerate(progress_bar):
+                #print("Batch indices:", batch)  
+                # Optionally, verify class distribution in the batch
+                # _, y, _ = task_train[batch]  # Fetch labels using indices
+                # unique_classes = torch.unique(y)
+                # assert set(unique_classes.tolist()) >= set(timestep_task_classes[t]), "Batch does not contain all required classes."
+                
+                
+                
+                
                 #Get data from batch
                 x, y, task_ids = batch
                 x, y = x.to(device), y.to(device)
                 task_id = task_ids[0]
 
+
+                prototypes_idx = torch.ones(len(task_metadata[int(task_id)]), dtype=torch.int64)* -1
+                for idx, yy  in enumerate(y):
+                    if prototypes_idx[yy] == -1:
+                        prototypes_idx[yy] = idx
+                print("Prototypes Indices Vector:", prototypes_idx)
+                
+                y_no_prototypes = y[~torch.isin(torch.arange(y.size(0)), prototypes_idx)]
+
                 # zero the gradients
                 opt.zero_grad()
 
                 # get the predictions from the model
-                pred = model(x, task_id).squeeze(0)
+                pred = model(x, prototypes_idx=prototypes_idx, task_id=task_id).squeeze(0)
                 # logger.log('pred shape', pred.shape, 'y shape', y.shape)
-                hard_loss = loss_fn(pred, y)
+                hard_loss = loss_fn(pred, y_no_prototypes)
 
                 #if previous model exists, calculate distillation loss
                 soft_loss = torch.tensor(0.0).to(device)
@@ -193,7 +309,7 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
                 total_loss.backward()
                 opt.step()
 
-                accuracy_batch = get_batch_acc(pred, y)
+                accuracy_batch = get_batch_acc(pred, y_no_prototypes)
                 
                 wandb.log({'hard_loss': hard_loss.item(), 'soft_loss': soft_loss.item(), 'train_loss': total_loss.item(), 'epoch': e, 'task_id': t, 'batch_idx': batch_idx, 'train_accuracy': accuracy_batch})
 
@@ -208,7 +324,7 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
                     progress_bar.set_description((f'E{e} batch loss:{hard_loss:.2f}, batch acc:{epoch_train_accs[-1]:>5.1%}'))
 
             # evaluate after each epoch on the current task's validation set:
-            avg_val_loss, avg_val_acc = evaluate_model(model, val_loader, loss_fn)
+            avg_val_loss, avg_val_acc = evaluate_model_prototypes(model, val_loader, loss_fn, task_id=task_id, task_metadata=task_metadata)
 
             wandb.log({'val_loss': avg_val_loss, 'val_accuracy': avg_val_acc, 'epoch': e, 'task_id': t})
 

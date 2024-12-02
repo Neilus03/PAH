@@ -335,36 +335,56 @@ def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi
 
 
 def evaluate_model_prototypes(multitask_model: nn.Module,  # trained model capable of multi-task classification
-                   val_loader: utils.data.DataLoader,  # task-specific data to evaluate on
-                   loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
-                   device = 'cuda',
-                   task_id=0,
-                   prototypes=None
-                  ):
-    """runs model on entirety of validation loader,
-    with specified loss and accuracy functions,
-    and returns average loss/acc over all batches"""
-    with torch.no_grad():
-        batch_val_losses, batch_val_accs = [], []
-        # print(prototypes.size())
-        for batch in val_loader:
-            vx, vy, task_ids = batch
-            vx, vy = vx.to(device), vy.to(device)
+                     val_loader: utils.data.DataLoader,  # task-specific data to evaluate on
+                     loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
+                     device = 'cuda',
+                     prototypes = None,
+                     task_metadata = None,
+                     task_id = 0
+                    ):
+     """
+     Evaluates the model on a validation dataset.
+    
+     Args:
+          multitask_model (nn.Module): The trained multitask model to evaluate.
+          val_loader (DataLoader): DataLoader for the validation dataset.
+          loss_fn (_Loss, optional): Loss function to calculate validation loss. Default is CrossEntropyLoss.
+    
+     Returns:
+          tuple: Average validation loss and accuracy across all batches.
+     """
+     with torch.no_grad():
+          batch_val_losses, batch_val_accs = [], []
+    
+          # Iterate over all batches in the validation DataLoader
+          for batch in val_loader:
+                vx, vy, task_ids = batch
+                vx, vy = vx.to(device), vy.to(device)
+                
+                prototypes_idx = torch.ones(len(task_metadata[int(task_id)]), dtype=torch.int64)* -1
+                for idx, yy  in enumerate(vy):
+                    if prototypes_idx[yy] == -1:
+                        prototypes_idx[yy] = idx
+                print("Prototypes Indices Vector:", prototypes_idx)
+                
+                y_no_prototypes = vy[~torch.isin(torch.arange(vy.size(0)), prototypes_idx)]
 
-            # input_hypernet_tensor = torch.tensor(input_hypernet, device=device)
-            # vy_no_hyper = vy[~torch.isin(torch.arange(vy.size(0), device=device), input_hypernet_tensor)]
-
-            vpred = multitask_model(vx, prototypes)
-            val_loss = loss_fn(vpred, vy)
-            val_acc = get_batch_acc(vpred, vy)
-
-            batch_val_losses.append(val_loss.item())
-            batch_val_accs.append(val_acc)
-    return np.mean(batch_val_losses), np.mean(batch_val_accs)
-
+    
+                # Forward pass with task-specific parameters
+                vpred = multitask_model(vx, prototypes_idx, task_id)
+    
+                # Calculate loss and accuracy for the batch
+                val_loss = loss_fn(vpred, y_no_prototypes)
+                val_acc = get_batch_acc(vpred, y_no_prototypes)
+    
+                batch_val_losses.append(val_loss.item())
+                batch_val_accs.append(val_acc)
+    
+     # Return average loss and accuracy across all batches
+     return np.mean(batch_val_losses), np.mean(batch_val_accs)
 
 # Evaluate the model on the test sets of all tasks
-def test_evaluate(multitask_model: nn.Module, 
+def test_evaluate_prototypes(multitask_model: nn.Module, 
                   selected_test_sets,  
                   task_test_sets, 
                   prev_accs = None,
@@ -473,6 +493,110 @@ def test_evaluate(multitask_model: nn.Module,
 
     return task_test_accs
 
+
+# Evaluate the model on the test sets of all tasks
+# Evaluate the model on the test sets of all tasks
+def test_evaluate(multitask_model: nn.Module, 
+                  selected_test_sets,  
+                  task_test_sets, 
+                  prev_accs = None,
+                  show_taskwise_accuracy=True, 
+                  baseline_taskwise_accs = None, 
+                  model_name: str='', 
+                  verbose=False, 
+                  batch_size=16,
+                  results_dir="",
+                  task_id=0,
+                  task_metadata=None
+                 ):
+    """
+    Evaluates the model on all selected test sets and optionally displays results.
+    Args:
+        multitask_model (nn.Module): The trained multitask model to evaluate.
+        selected_test_sets (list[Dataset]): List of test datasets for each task.
+        prev_accs (list[list[float]], optional): Previous accuracies for tracking forgetting.
+        show_taskwise_accuracy (bool, optional): If True, plots a bar chart of taskwise accuracies.
+        baseline_taskwise_accs (list[float], optional): Baseline accuracies for comparison.
+        model_name (str, optional): Name of the model to show in plots. Default is ''.
+        verbose (bool, optional): If True, prints detailed evaluation results. Default is False.
+    Returns:
+        list[float]: Taskwise accuracies for the selected test sets.
+    """
+    if verbose:
+        print(f'{model_name} evaluation on test set of all tasks:'.capitalize())
+
+    task_test_losses = []
+    task_test_accs = []
+
+    # Iterate over each task's test dataset
+    for t, test_data in enumerate(selected_test_sets):
+        # Create a DataLoader for the current task's test dataset
+        test_loader = utils.data.DataLoader(test_data,
+                                       batch_size=batch_size,
+                                       shuffle=True)
+
+        # Evaluate the model on the current task
+        task_test_loss, task_test_acc = evaluate_model(multitask_model, test_loader)
+
+        if verbose:
+            print(f'{task_metadata[t]}: {task_test_acc:.2%}')
+            if baseline_taskwise_accs is not None:
+                print(f'(Baseline: {baseline_taskwise_accs[t]:.2%})')
+
+        task_test_losses.append(task_test_loss)
+        task_test_accs.append(task_test_acc)
+
+    # Calculate average test loss and accuracy across all tasks
+    avg_task_test_loss = np.mean(task_test_losses)
+    avg_task_test_acc = np.mean(task_test_accs)
+
+    if verbose:
+        print(f'\n +++ AVERAGE TASK TEST ACCURACY: {avg_task_test_acc:.2%} +++ ')
+
+    # Plot taskwise accuracy if enabled
+    if show_taskwise_accuracy:
+        bar_heights = task_test_accs + [0]*(len(task_test_sets) - len(selected_test_sets))
+        # display bar plot with accuracy on each evaluation task
+        plt.bar(x = range(len(task_test_sets)), height=bar_heights, zorder=1)
+
+        plt.xticks(
+        range(len(task_test_sets)),
+        [','.join(task_classes.values()) for t, task_classes in task_metadata.items()],
+        rotation='vertical'
+        )
+
+        plt.axhline(avg_task_test_acc, c=[0.4]*3, linestyle=':')
+        plt.text(0, avg_task_test_acc+0.002, f'{model_name} (average)', c=[0.4]*3, size=8)
+
+        if prev_accs is not None:
+            # plot the previous step's accuracies on top
+            # (will show forgetting in red)
+            for p, prev_acc_list in enumerate(prev_accs):
+                plt.bar(x = range(len(prev_acc_list)), height=prev_acc_list, fc='tab:red', zorder=0, alpha=0.5*((p+1)/len(prev_accs)))
+
+        if baseline_taskwise_accs is not None:
+            for t, acc in enumerate(baseline_taskwise_accs):
+                plt.plot([t-0.5, t+0.5], [acc, acc], c='black', linestyle='--')
+
+            # show average as well:
+            baseline_avg = np.mean(baseline_taskwise_accs)
+            plt.axhline(baseline_avg, c=[0.6]*3, linestyle=':')
+            plt.text(0, baseline_avg+0.002, 'baseline average', c=[0.6]*3, size=8)
+
+        plt.ylim([0, 1])
+        #plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+        # Save figure to wandb
+        file_path = os.path.join(results_dir, f'taskwise_accuracy_task_{task_id}.png')
+        plt.savefig(file_path)
+        img = Image.open(file_path)
+        wandb.log({f'taskwise accuracy': wandb.Image(img), 'task': task_id})
+
+        plt.close()
+
+    return task_test_accs
+
+
 def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, test_frac=0.1, batch_size=256):
     """
     Sets up dataset, dataloaders, and metadata for training and testing.
@@ -496,7 +620,16 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
 
     # Dataset-specific settings
     if dataset_name == 'Split-MNIST':
-        dataset = datasets.MNIST(root=data_dir, train=True, download=True)
+        dataset_train = datasets.MNIST(root=data_dir, train=True, download=True)
+        dataset_test = datasets.MNIST(root=data_dir, train=False, download=True)
+        #full dataset combines train and test
+        dataset = ConcatDataset([dataset_train, dataset_test])
+        #but ConcatDataset doesn't have a 'classes' attribute, so we need to add it:
+        dataset.targets = dataset_train.targets + dataset_test.targets
+        dataset.classes = dataset_train.classes
+        dataset.data = np.concatenate([dataset_train.data, dataset_test.data], axis=0)
+        
+        
         num_classes = 10
         preprocess = transforms.Compose([
             transforms.Grayscale(num_output_channels=3), # Convert to 3-channel grayscale
@@ -510,7 +643,16 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
         }
 
     elif dataset_name == 'Split-CIFAR100':
-        dataset = datasets.CIFAR100(root=data_dir, train=True, download=True)
+        dataset_train = datasets.CIFAR100(root=data_dir, train=True, download=True)
+        dataset_test = datasets.CIFAR100(root=data_dir, train=False, download=True)
+        #full dataset combines train and test
+        dataset = ConcatDataset([dataset_train, dataset_test])
+        #but ConcatDataset doesn't have a 'classes' attribute, so we need to add it:
+        dataset.targets = dataset_train.targets + dataset_test.targets
+        dataset.classes = dataset_train.classes
+        dataset.data = np.concatenate([dataset_train.data, dataset_test.data], axis=0)
+        
+        
         num_classes = 100
         preprocess = transforms.Compose([
             transforms.ToTensor(),
@@ -538,7 +680,13 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
 
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
-
+    
+    images_per_class = {}
+    for class_idx in tqdm(range(num_classes)):
+        indices = [i for i, label in enumerate(dataset.targets) if label == class_idx]
+        images_per_class[class_idx] = indices  # Store indices instead of images
+        # If you need images elsewhere, consider storing them separately or processing them on-the-fly
+        
     # Process tasks
     for t, task_classes in timestep_task_classes.items():
         if dataset_name == 'Split-MNIST':
@@ -556,6 +704,9 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
             task_images = [dataset[i][0] for i in task_indices]
             task_labels = [label for i, (_, label) in enumerate(dataset.samples) if label in task_classes]
 
+
+    
+        
         # Map old labels to 0-based labels for the task
         class_to_idx = {orig: idx for idx, orig in enumerate(task_classes)}
         task_labels = [class_to_idx[int(label)] for label in task_labels]
@@ -574,12 +725,6 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
         test_size = len(task_dataset) - train_size - val_size
         train_set, val_set, test_set = random_split(task_dataset, [train_size, val_size, test_size])
 
-        for dataset in (train_set, val_set, test_set):
-            #Set dataset attributes
-            dataset.classes = task_classes
-            dataset.class_to_idx = class_to_idx
-            dataset.task_id = t
-            dataset.num_classes = len(task_classes)
 
         # Store datasets and metadata
         timestep_tasks[t] = (train_set, val_set)
@@ -599,11 +744,14 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
     final_test_loader = DataLoader(final_test_data, batch_size=batch_size, shuffle=True)
     print(f"Final test size (containing all tasks): {len(final_test_data)}")
     
+
     return {
         'timestep_tasks': timestep_tasks,
         'final_test_loader': final_test_loader,
         'task_metadata': task_metadata,
-        'task_test_sets': task_test_sets
+        'task_test_sets': task_test_sets,
+        'images_per_class': images_per_class,
+        'timestep_task_classes': timestep_task_classes
     }
 
 

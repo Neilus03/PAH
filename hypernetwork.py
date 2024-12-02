@@ -109,19 +109,19 @@ class HyperCMTL(nn.Module):
         
         return task_head_out.squeeze(0)
     
-    def deepcopy(self, device='cuda'):
-        new_model = HyperCMTL(num_instances=1,
-                 backbone='resnet50',  # Backbone architecture
-                 task_head_projection_size=64,             # Task head hidden layer size
-                 task_head_num_classes=2,                  # Task head output size
-                 hyper_hidden_features=256,                # Hypernetwork hidden layer size
-                 hyper_hidden_layers=2,                    # Hypernetwork number of layers
-                 device='cuda',
-                 channels=1,
-                 img_size=[32, 32],
-                 std=0.01).to(device)
+    def deepcopy(self):
+        new_model = HyperCMTL(num_instances=self.num_instances,
+                    backbone=self.backbone_name,
+                    task_head_projection_size=self.task_head_projection_size,
+                    task_head_num_classes=self.task_head_num_classes,
+                    hyper_hidden_features=self.hyper_hidden_features,
+                    hyper_hidden_layers=self.hyper_hidden_layers,
+                    device=self.device,
+                    channels=self.channels,
+                    img_size=self.img_size, 
+                    std=self.std)
         new_model.load_state_dict(self.state_dict())
-        return new_model.to(device)
+        return new_model.to(device=self.device)
     
     def get_optimizer_list(self):
         # networks = [self.backbone, self.task_head, self.hypernet, self.hyper_emb]
@@ -161,27 +161,38 @@ class HyperCMTL_prototype(HyperCMTL):
         # nn.init.normal_(self.hyper_emb.weight, mean=0, std=std)
     
         self.hyper_emb = nn.Sequential(
-            nn.Linear(self.backbone_emb_size*self.task_head_num_classes, 256),
+            nn.Linear(self.backbone_emb_size*self.task_head_num_classes, 2048),
             nn.ReLU(),
-            nn.Linear(256, self.hn_in),
+            nn.Linear(2048, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, self.hn_in),
             nn.ReLU()
         )
+        self.learnt_emb = nn.Embedding(self.num_instances, self.hn_in)
         # nn.init.normal_(self.hyper_emb[0].weight, mean=0, std=std)
 
-    def get_params(self, prototype_out):
+        self.hypernet = HyperNetwork(hyper_in_features=self.hn_in,
+                                    hyper_hidden_layers=hyper_hidden_layers,
+                                    hyper_hidden_features=hyper_hidden_features,
+                                    hypo_module=self.task_head,
+                                    activation='relu').to(device)
+                                 
+
+    def get_params(self, prototype_out, task_idx):
+        learnt_emb = self.learnt_emb(torch.LongTensor([task_idx]).to(self.device))
         print("prototype_out", prototype_out.size())
         input_hyper_reduced = self.hyper_emb(prototype_out.flatten().unsqueeze(0))
 
         print("input_hyper_reduced", input_hyper_reduced.size())
-
-        out = self.hypernet(input_hyper_reduced)
+        #task_emb = torch.concat((input_hyper_reduced, learnt_emb), dim=1)
+        out = self.hypernet(learnt_emb)
         return out 
     
 
-    def forward(self, support_set, prototypes, **kwargs):
+    def forward(self, support_set, prototypes_idx, task_id, **kwargs):
         backbone_out = self.backbone(support_set)
-        # print(prototypes.size())
-        prototype_emb = self.backbone(prototypes)
+        prototypes_out = backbone_out[prototypes_idx, :]
+        backbone_out_no_prototypes = backbone_out[~torch.isin(torch.arange(backbone_out.size(0)), prototypes_idx)]
         
         # prototype_emb = backbone_out[task_idx, :]
         # task_idx_tensor = torch.tensor(task_idx)
@@ -189,10 +200,22 @@ class HyperCMTL_prototype(HyperCMTL):
         
         # input_task_head = backbone_out[~torch.isin(torch.arange(backbone_out.size(0)), task_idx_tensor)]
         
-        params = self.get_params(prototype_emb)
-        task_head_out = self.task_head(backbone_out, params=params)
+        params = self.get_params(prototypes_out, task_id)
+        task_head_out = self.task_head(backbone_out_no_prototypes, params=params)
         
         return task_head_out.squeeze(0)
+    
+    def get_optimizer_list(self):
+        # networks = [self.backbone, self.task_head, self.hypernet, self.hyper_emb]
+        optimizer_list = []
+        optimizer_list.append({'params': self.hyper_emb.parameters(), 'lr': 1e-3})
+        optimizer_list.append({'params': self.learnt_emb.parameters(), 'lr': 1e-3})
+        
+        optimizer_list.extend(self.hypernet.get_optimizer_list())
+        optimizer_list.extend(self.backbone.get_optimizer_list())
+        optimizer_list.extend(self.task_head.get_optimizer_list())
+        print("optimizer_list", optimizer_list)
+        return optimizer_list
     
     def deepcopy(self, device='cuda'):
         new_model = HyperCMTL_prototype(num_instances=self.num_instances,
