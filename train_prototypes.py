@@ -125,7 +125,7 @@ hyper_hidden_features = 1024             # Larger hypernetwork hidden layer size
 hyper_hidden_layers = 7                 # Deeper hypernetwork
 
 # Initialize the model with the new configurations
-model = HyperCMTL_prototype_attention(
+model = HyperCMTL_prototype(
     num_instances=len(task_metadata),
     backbone=backbone,
     task_head_projection_size=task_head_projection_size,
