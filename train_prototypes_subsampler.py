@@ -63,7 +63,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 VAL_FRAC = 0.1
 TEST_FRAC = 0.1
 BATCH_SIZE = 512
-dataset = "Split-CIFAR100" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
+dataset = "Split-MNIST" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
 NUM_TASKS =5 if dataset == 'Split-MNIST' else 10
 
 ### training hyperparameters:
