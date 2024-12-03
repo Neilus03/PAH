@@ -48,6 +48,9 @@ import time
 import logging
 import pdb
 
+#Get tinyimagenet dataset
+#!wget http://cs231n.stanford.edu/tiny-imagenet-200.zip
+#!unzip tiny-imagenet-200.zip -d data
 
 import random
 from torch.utils.data import Sampler
@@ -63,7 +66,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 VAL_FRAC = 0.1
 TEST_FRAC = 0.1
 BATCH_SIZE = 512
-dataset = "Split-MNIST" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
+dataset = "TinyImageNet" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
 NUM_TASKS =5 if dataset == 'Split-MNIST' else 10
 
 ### training hyperparameters:
@@ -228,7 +231,12 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
         
         for idx in range(len(task_train)):
             _, label, _ = task_train[idx]
-            images_per_class_task[int(label+t*10)].append(idx)
+            if dataset == 'Split-CIFAR100' or dataset == 'TinyImageNet':
+                
+                images_per_class_task[int(label+t*10)].append(idx)
+            elif dataset == 'Split-MNIST':
+                images_per_class_task[int(label)+t*2].append(idx)
+                
             #print('Images per class task:', images_per_class_task)
         # Check that each class has at least one sample
         for class_idx, indices in images_per_class_task.items():
