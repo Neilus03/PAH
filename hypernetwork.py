@@ -248,6 +248,7 @@ class HyperCMTL_prototype(nn.Module):
                     channels=self.channels,
                     img_size=self.img_size, 
                     std=self.std).to(device)
+        new_model.load_state_dict(self.state_dict())
         return new_model.to(device)
 
 class HyperCMTL_prototype_attention_old(HyperCMTL):
@@ -529,52 +530,5 @@ class TaskHead(MetaModule):
         return optimizer_list
 
 
-'''class MultitaskModel(nn.Module):
-    def __init__(self, backbone: nn.Module,
-                 device="cuda"):
-        super().__init__()
 
-        self.backbone = backbone
-
-        # a dict mapping task IDs to the classification heads for those tasks:
-        self.task_heads = nn.ModuleDict()
-        # we must use a nn.ModuleDict instead of a base python dict,
-        # to ensure that the modules inside are properly registered in self.parameters() etc.
-
-        self.relu = nn.ReLU()
-        self.device = device
-        self.to(device)
-
-    def forward(self,
-                x: torch.Tensor,
-                task_id: int):
-
-        task_id = str(int(task_id))
-        # nn.ModuleDict requires string keys for some reason,
-        # so we have to be sure to cast the task_id from tensor(2) to 2 to '2'
-
-        assert task_id in self.task_heads, f"no head exists for task id {task_id}"
-
-        # select which classifier head to use:
-        chosen_head = self.task_heads[task_id]
-
-        # activated features from backbone:
-        x = self.relu(self.backbone(x))
-        # task-specific prediction:
-        x = chosen_head(x)
-
-        return x
-
-    def add_task(self,
-                 task_id: int,
-                 head: nn.Module):
-        """accepts an integer task_id and a classification head
-        associated to that task.
-        adds the head to this model's collection of task heads."""
-        self.task_heads[str(task_id)] = head
-
-    @property
-    def num_task_heads(self):
-        return len(self.task_heads)
     
-    '''

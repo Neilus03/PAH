@@ -64,14 +64,14 @@ VAL_FRAC = 0.1
 TEST_FRAC = 0.1
 BATCH_SIZE = 512
 dataset = "Split-CIFAR100" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
-NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
+NUM_TASKS =5 if dataset == 'Split-MNIST' else 10
 
 ### training hyperparameters:
-EPOCHS_PER_TIMESTEP = 15
-lr     = 1e-4  # initial learning rate
+EPOCHS_PER_TIMESTEP = 3
+lr     = 5e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
-stability = 100 #`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
+stability = 7#`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
 
 os.makedirs('results', exist_ok=True)
 # num = str(len(os.listdir('results/'))).zfill(3)
@@ -317,7 +317,8 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
                     for old_task_id in range(t):
                         with torch.no_grad():
                             x = torch.concat([prototypes_per_class[old_task_id], x], dim=0)
-                            prototypes_idx = torch.range(0, len(task_metadata[old_task_id])-1, dtype=torch.int64)
+                            prototypes_idx = torch.arange(0, len(task_metadata[old_task_id]), dtype=torch.int64)
+                            # print("Prototypes Indices Vector:", prototypes_idx)
                             old_pred = previous_model(x, prototypes_idx=prototypes_idx, task_id=old_task_id).squeeze(0)
                         new_prev_pred = model(x, prototypes_idx=prototypes_idx, task_id=old_task_id).squeeze(0)
                         soft_loss += distillation_output_loss(new_prev_pred, old_pred, temperature).mean().to(device)
@@ -329,7 +330,7 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
 
                 accuracy_batch = get_batch_acc(pred, y_no_prototypes)
                 
-                wandb.log({'hard_loss': hard_loss.item(), 'soft_loss': soft_loss.item(), 'train_loss': total_loss.item(), 'epoch': e, 'task_id': t, 'batch_idx': batch_idx, 'train_accuracy': accuracy_batch})
+                wandb.log({'hard_loss': hard_loss.item(), 'soft_loss': stability * soft_loss.item(), 'train_loss': total_loss.item(), 'epoch': e, 'task_id': t, 'batch_idx': batch_idx, 'train_accuracy': accuracy_batch})
 
                 # track loss and accuracy:
                 epoch_train_losses.append(hard_loss.item())
@@ -343,7 +344,7 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
 
                 if e*batch_idx + batch_idx % 50 == 0:
                     # evaluate after each epoch on the current task's validation set:
-                    avg_val_loss, avg_val_acc = evaluate_model_prototypes(model, val_loader, loss_fn, task_id=task_id, task_metadata=task_metadata)
+                    avg_val_loss, avg_val_acc = evaluate_model_prototypes(model, val_loader, loss_fn, task_id=task_id, task_metadata=task_metadata, prototypes_per_class = prototypes_per_class[task_id.item()])
                     
                     if avg_val_acc > metrics['best_val_acc']+0.01:
                         patience_counter = 0
@@ -360,7 +361,7 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
 
 
             # evaluate after each epoch on the current task's validation set:
-            avg_val_loss, avg_val_acc = evaluate_model_prototypes(model, val_loader, loss_fn, task_id=task_id, task_metadata=task_metadata)
+            avg_val_loss, avg_val_acc = evaluate_model_prototypes(model, val_loader, loss_fn, task_id=task_id, task_metadata=task_metadata, prototypes_per_class = prototypes_per_class[task_id.item()])
             wandb.log({'val_loss': avg_val_loss, 'val_accuracy': avg_val_acc, 'epoch': e, 'task_id': t})
             
             if patience_counter >= patience:
@@ -404,7 +405,8 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
                     batch_size=BATCH_SIZE,
                     results_dir=results_dir,
                     task_id=t,
-                    task_metadata=task_metadata)
+                    task_metadata=task_metadata,
+                    prototypes_per_class=prototypes_per_class)
         
         prev_test_accs.append(test_accs)
 

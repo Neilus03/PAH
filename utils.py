@@ -340,7 +340,8 @@ def evaluate_model_prototypes(multitask_model: nn.Module,  # trained model capab
                      device = 'cuda',
                      prototypes = None,
                      task_metadata = None,
-                     task_id = 0
+                     task_id = 0,
+                     prototypes_per_class = []
                     ):
      """
      Evaluates the model on a validation dataset.
@@ -361,21 +362,20 @@ def evaluate_model_prototypes(multitask_model: nn.Module,  # trained model capab
                 vx, vy, task_ids = batch
                 vx, vy = vx.to(device), vy.to(device)
                 
-                prototypes_idx = torch.ones(len(task_metadata[int(task_id)]), dtype=torch.int64)* -1
-                for idx, yy  in enumerate(vy):
-                    if prototypes_idx[yy] == -1:
-                        prototypes_idx[yy] = idx
-                # print("Prototypes Indices Vector:", prototypes_idx)
+                vx = torch.concat([prototypes_per_class, vx], dim=0)
+                # print(vx.shape)
+                prototypes_idx = torch.arange(0, len(task_metadata[int(task_id)]), dtype=torch.int64)
                 
-                y_no_prototypes = vy[~torch.isin(torch.arange(vy.size(0)), prototypes_idx)]
+                # y_no_prototypes = vy[prototypes_per_class.shape[0]:]
 
     
                 # Forward pass with task-specific parameters
                 vpred = multitask_model(vx, prototypes_idx, task_id)
     
+                # print(vpred.shape, y_no_prototypes.shape)
                 # Calculate loss and accuracy for the batch
-                val_loss = loss_fn(vpred, y_no_prototypes)
-                val_acc = get_batch_acc(vpred, y_no_prototypes)
+                val_loss = loss_fn(vpred, vy)
+                val_acc = get_batch_acc(vpred, vy)
     
                 batch_val_losses.append(val_loss.item())
                 batch_val_accs.append(val_acc)
@@ -395,7 +395,8 @@ def test_evaluate_prototypes(multitask_model: nn.Module,
                   batch_size=16,
                   results_dir="",
                   task_id=0,
-                  task_metadata=None
+                  task_metadata=None,
+                  prototypes_per_class = {}
                  ):
     """
     Evaluates the model on all selected test sets and optionally displays results.
@@ -427,7 +428,8 @@ def test_evaluate_prototypes(multitask_model: nn.Module,
         task_test_loss, task_test_acc = evaluate_model_prototypes(multitask_model, test_loader,
                                                        device='cuda',
                                                        task_metadata=task_metadata,
-                                                       task_id=task_id)
+                                                       task_id=task_id,
+                                                       prototypes_per_class=prototypes_per_class[t])
 
         if verbose:
             print(f'{task_metadata[t]}: {task_test_acc:.2%}')
