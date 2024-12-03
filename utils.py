@@ -13,6 +13,7 @@ import io
 from PIL import Image
 import pdb
 from tqdm import tqdm
+import pdb
 
 def inspect_batch(images, labels=None, predictions=None, class_names=None, title=None,
                   center_title=True, max_to_show=16, num_cols=4, scale=1):
@@ -620,8 +621,9 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
         dataset_test = datasets.MNIST(root=data_dir, train=False, download=True)
         #full dataset combines train and test
         dataset = ConcatDataset([dataset_train, dataset_test])
-        #but ConcatDataset doesn't have a 'classes' attribute, so we need to add it:
-        dataset.targets = dataset_train.targets + dataset_test.targets
+    
+        # dataset.targets = dataset_train.targets + dataset_test.targets
+        dataset.targets = torch.cat([dataset_train.targets, dataset_test.targets])
         dataset.classes = dataset_train.classes
         dataset.data = np.concatenate([dataset_train.data, dataset_test.data], axis=0)
         
@@ -644,6 +646,7 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
         #full dataset combines train and test
         dataset = ConcatDataset([dataset_train, dataset_test])
         #but ConcatDataset doesn't have a 'classes' attribute, so we need to add it:
+        print(len(dataset_train.targets), len(dataset_test.targets))
         dataset.targets = dataset_train.targets + dataset_test.targets
         dataset.classes = dataset_train.classes
         dataset.data = np.concatenate([dataset_train.data, dataset_test.data], axis=0)
@@ -687,7 +690,7 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
     for t, task_classes in timestep_task_classes.items():
         if dataset_name == 'Split-MNIST':
             task_indices = [i for i, label in enumerate(dataset.targets) if label in task_classes]
-            task_images = [Image.fromarray(dataset.data[i].numpy(), mode='L') for i in task_indices]
+            task_images = [Image.fromarray(dataset.data[i], mode='L') for i in task_indices]
             task_labels = [label for i, label in enumerate(dataset.targets) if label in task_classes]
 
         elif dataset_name == 'Split-CIFAR100':
