@@ -32,7 +32,7 @@ from tqdm import tqdm
 import os
 
 # Functions from utils to help with training and evaluation
-from utils import inspect_batch, test_evaluate, training_plot, setup_dataset, inspect_task, distillation_output_loss, evaluate_model, evaluate_model_prototypes, get_batch_acc, logger
+from utils import inspect_batch, test_evaluate, test_evaluate_prototypes, training_plot, setup_dataset, inspect_task, distillation_output_loss, evaluate_model, evaluate_model_prototypes, get_batch_acc, logger
 
 # Import the HyperCMTL model architecture
 from hypernetwork import HyperCMTL, HyperCMTL_prototype
@@ -62,16 +62,16 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
 TEST_FRAC = 0.1
-BATCH_SIZE = 32
+BATCH_SIZE = 512
 dataset = "Split-CIFAR100" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
 NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
 
 ### training hyperparameters:
-EPOCHS_PER_TIMESTEP = 1
+EPOCHS_PER_TIMESTEP = 15
 lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
-stability = 5 #`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
+stability = 100 #`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
 
 os.makedirs('results', exist_ok=True)
 # num = str(len(os.listdir('results/'))).zfill(3)
@@ -102,7 +102,9 @@ task_head_projection_size = 256          # Even larger hidden layer in task head
 hyper_hidden_features = 256             # Larger hypernetwork hidden layer size
 hyper_hidden_layers = 4                 # Deeper hypernetwork
 
-
+patience = 5  # Number of epochs to wait for improvement
+best_val_acc = 0.0
+patience_counter = 0
 
 # Initialize the model with the new configurations
 model = HyperCMTL_prototype(
@@ -165,7 +167,7 @@ class MinimumSubsetBatchSampler(Sampler):
         self.task_classes = task_classes
         self.images_per_class = images_per_class
 
-        print("Images per class:", self.images_per_class.keys())
+        # print("Images per class:", self.images_per_class.keys())
 
         for class_idx in self.task_classes:
             if len(self.images_per_class[class_idx]) == 0:
@@ -210,7 +212,8 @@ class MinimumSubsetBatchSampler(Sampler):
     
     
 with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as run:
-
+    wandb.watch(model, log='all', log_freq=100)
+    prototypes_per_class = {}
     # outer loop over each task, in sequence
     for t, (task_train, task_val) in timestep_tasks.items():
         logger.log(f"Training on task id: {t}  (classification between: {task_metadata[t]})")
@@ -240,21 +243,35 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
             images_per_class=images_per_class_task
         )
         
+        batch_sampler_val = MinimumSubsetBatchSampler(
+            dataset=task_val,
+            batch_size=BATCH_SIZE,
+            task_classes=timestep_task_classes[t],
+            images_per_class=images_per_class_task
+        )
+
         # Create the DataLoader with the corrected sampler
         train_loader = DataLoader(
             task_train,
-            batch_sampler=batch_sampler
+            batch_sampler=batch_sampler,
         )
         
         # Validation DataLoader remains unchanged
+        # val_loader = DataLoader(
+        #     task_val,
+        #     batch_sampler=batch_sampler_val,
+        # )
+
         val_loader = DataLoader(
             task_val,
             batch_size=BATCH_SIZE,
-            shuffle=True
+            shuffle=False
         )
 
         #print(next(iter(train_loader)))
 
+        best_val_acc = 0.0
+        patience_counter = 0
         # inner loop over the current task:
         for e in range(EPOCHS_PER_TIMESTEP):
             epoch_train_losses, epoch_train_accs = [], []
@@ -269,9 +286,6 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
                 # unique_classes = torch.unique(y)
                 # assert set(unique_classes.tolist()) >= set(timestep_task_classes[t]), "Batch does not contain all required classes."
                 
-                
-                
-                
                 #Get data from batch
                 x, y, task_ids = batch
                 x, y = x.to(device), y.to(device)
@@ -282,8 +296,11 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
                 for idx, yy  in enumerate(y):
                     if prototypes_idx[yy] == -1:
                         prototypes_idx[yy] = idx
-                print("Prototypes Indices Vector:", prototypes_idx)
+                # print("Prototypes Indices Vector:", prototypes_idx)
                 
+                if t not in prototypes_per_class:
+                    prototypes_per_class[t] = x[prototypes_idx]
+
                 y_no_prototypes = y[~torch.isin(torch.arange(y.size(0)), prototypes_idx)]
 
                 # zero the gradients
@@ -299,9 +316,10 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
                 if previous_model is not None:
                     for old_task_id in range(t):
                         with torch.no_grad():
-                    
-                            old_pred = previous_model(x, old_task_id)
-                        new_prev_pred = model(x, old_task_id)
+                            x = torch.concat([prototypes_per_class[old_task_id], x], dim=0)
+                            prototypes_idx = torch.range(0, len(task_metadata[old_task_id])-1, dtype=torch.int64)
+                            old_pred = previous_model(x, prototypes_idx=prototypes_idx, task_id=old_task_id).squeeze(0)
+                        new_prev_pred = model(x, prototypes_idx=prototypes_idx, task_id=old_task_id).squeeze(0)
                         soft_loss += distillation_output_loss(new_prev_pred, old_pred, temperature).mean().to(device)
                 
                 total_loss = hard_loss + stability * soft_loss
@@ -323,10 +341,30 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
                     # show loss/acc of this batch in progress bar:
                     progress_bar.set_description((f'E{e} batch loss:{hard_loss:.2f}, batch acc:{epoch_train_accs[-1]:>5.1%}'))
 
+                if e*batch_idx + batch_idx % 50 == 0:
+                    # evaluate after each epoch on the current task's validation set:
+                    avg_val_loss, avg_val_acc = evaluate_model_prototypes(model, val_loader, loss_fn, task_id=task_id, task_metadata=task_metadata)
+                    
+                    if avg_val_acc > metrics['best_val_acc']+0.01:
+                        patience_counter = 0
+                    else:
+                        patience_counter += 1
+                        if patience_counter >= patience:
+                            logger.log(f'Early stopping after {50*patience} steps without improvement.')
+                            break
+
+                    if avg_val_acc > metrics['best_val_acc']:
+                        metrics['best_val_acc'] = avg_val_acc
+
+                    wandb.log({'val_loss': avg_val_loss, 'val_accuracy': avg_val_acc, 'epoch': e, 'task_id': t, 'patience_counter': patience_counter})
+
+
             # evaluate after each epoch on the current task's validation set:
             avg_val_loss, avg_val_acc = evaluate_model_prototypes(model, val_loader, loss_fn, task_id=task_id, task_metadata=task_metadata)
-
             wandb.log({'val_loss': avg_val_loss, 'val_accuracy': avg_val_acc, 'epoch': e, 'task_id': t})
+            
+            if patience_counter >= patience:
+                break
 
             ### update metrics:
             metrics['epoch_steps'].append(metrics['steps_trained'])
@@ -341,8 +379,6 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
                 logger.log((f'E{e} loss:{np.mean(epoch_train_losses):.2f}|v:{avg_val_loss:.2f}' +
                                     f'| acc t:{np.mean(epoch_train_accs):>5.1%}|v:{avg_val_acc:>5.1%}'))
 
-            if avg_val_acc > metrics['best_val_acc']:
-                metrics['best_val_acc'] = avg_val_acc
 
         # this one is important for nice plots:
         metrics['CL_timesteps'].append(metrics['steps_trained'])
@@ -356,20 +392,19 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
         metrics['best_val_acc'] = 0.0
         
         # evaluate on all tasks:
-        test_accs = test_evaluate(
-                            multitask_model=model, 
-                            selected_test_sets=task_test_sets[:t+1],  
-                            task_test_sets=task_test_sets, 
-                            prev_accs = prev_test_accs,
-                            show_taskwise_accuracy=True, 
-                            baseline_taskwise_accs = None, 
-                            model_name= 'HyperCMTL + LwF', 
-                            verbose=True, 
-                            batch_size=BATCH_SIZE,
-                            results_dir=results_dir,
-                            task_id=t,
-                            task_metadata=task_metadata,
-                            )
+        test_accs = test_evaluate_prototypes(
+                    multitask_model= model, 
+                    selected_test_sets = task_test_sets[:t+1],  
+                    task_test_sets= task_test_sets, 
+                    prev_accs = prev_test_accs,
+                    show_taskwise_accuracy=True, 
+                    baseline_taskwise_accs=None, 
+                    model_name="HyperCMTL_prototype", 
+                    verbose=False, 
+                    batch_size=BATCH_SIZE,
+                    results_dir=results_dir,
+                    task_id=t,
+                    task_metadata=task_metadata)
         
         prev_test_accs.append(test_accs)
 

@@ -133,7 +133,7 @@ class HyperCMTL(nn.Module):
         print("optimizer_list", optimizer_list)
         return optimizer_list
 
-class HyperCMTL_prototype(HyperCMTL):
+class HyperCMTL_prototype(nn.Module):
     def __init__(self,
                  num_instances=1,
                  backbone='resnet50',  # Backbone architecture
@@ -145,20 +145,46 @@ class HyperCMTL_prototype(HyperCMTL):
                  channels=1,
                  img_size=[32, 32],
                  std=0.01):
-        
-        super().__init__(num_instances=num_instances,
-                            backbone=backbone,
-                            task_head_projection_size=task_head_projection_size,
-                            task_head_num_classes=task_head_num_classes,
-                            hyper_hidden_features=hyper_hidden_features,
-                            hyper_hidden_layers=hyper_hidden_layers,
-                            device=device,
-                            channels=channels,
-                            img_size=img_size,
-                            std=std)
+        super().__init__()
 
-        # self.hyper_emb = nn.Linear(self.backbone_emb_size, self.hn_in//self.task_head_num_classes)
-        # nn.init.normal_(self.hyper_emb.weight, mean=0, std=std)
+        self.num_instances = num_instances
+        self.backbone_name = backbone
+        self.task_head_projection_size = task_head_projection_size
+        self.task_head_num_classes = task_head_num_classes
+        self.hyper_hidden_features = hyper_hidden_features
+        self.hyper_hidden_layers = hyper_hidden_layers
+        self.device = device
+        self.channels = channels
+        self.img_size = img_size
+        self.std = std
+
+        # Backbone
+        '''self.backbone = ConvBackbone(layers=backbone_layers,
+                                     input_size=(channels, img_size[0], img_size[1]),
+                                     device=device)
+        '''
+        if backbone in backbone_dict:
+            self.backbone = backbone_dict[self.backbone_name](device=device, pretrained=True)
+        else: 
+            raise ValueError(f"Backbone {backbone} is not supported.")
+        
+        # Task head
+        self.task_head = TaskHead(input_size=self.backbone.num_features,
+                                  projection_size=task_head_projection_size,
+                                  num_classes=task_head_num_classes,
+                                  dropout=0.5,
+                                  device=device)
+
+        # Hypernetwork
+        self.backbone_emb_size = self.backbone.num_features
+        self.hn_in = 64  # Input size for hypernetwork embedding
+        self.hypernet = HyperNetwork(hyper_in_features=self.hn_in*2,
+                                     hyper_hidden_layers=hyper_hidden_layers,
+                                     hyper_hidden_features=hyper_hidden_features,
+                                     hypo_module=self.task_head,
+                                     activation='relu')
+
+        # self.hyper_emb = nn.Embedding(self.num_instances, self.hn_in)
     
         self.hyper_emb = nn.Sequential(
             nn.Linear(self.backbone_emb_size*self.task_head_num_classes, 2048),
@@ -169,23 +195,17 @@ class HyperCMTL_prototype(HyperCMTL):
             nn.ReLU()
         )
         self.learnt_emb = nn.Embedding(self.num_instances, self.hn_in)
+        nn.init.normal_(self.learnt_emb.weight, mean=0, std=std)
         # nn.init.normal_(self.hyper_emb[0].weight, mean=0, std=std)
-
-        self.hypernet = HyperNetwork(hyper_in_features=self.hn_in,
-                                    hyper_hidden_layers=hyper_hidden_layers,
-                                    hyper_hidden_features=hyper_hidden_features,
-                                    hypo_module=self.task_head,
-                                    activation='relu').to(device)
                                  
-
     def get_params(self, prototype_out, task_idx):
         learnt_emb = self.learnt_emb(torch.LongTensor([task_idx]).to(self.device))
-        print("prototype_out", prototype_out.size())
+        # print("prototype_out", prototype_out.size())
         input_hyper_reduced = self.hyper_emb(prototype_out.flatten().unsqueeze(0))
 
-        print("input_hyper_reduced", input_hyper_reduced.size())
-        #task_emb = torch.concat((input_hyper_reduced, learnt_emb), dim=1)
-        out = self.hypernet(learnt_emb)
+        # print("input_hyper_reduced", input_hyper_reduced.size())
+        task_emb = torch.concat((input_hyper_reduced, learnt_emb), dim=1)
+        out = self.hypernet(task_emb)
         return out 
     
 

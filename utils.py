@@ -365,7 +365,7 @@ def evaluate_model_prototypes(multitask_model: nn.Module,  # trained model capab
                 for idx, yy  in enumerate(vy):
                     if prototypes_idx[yy] == -1:
                         prototypes_idx[yy] = idx
-                print("Prototypes Indices Vector:", prototypes_idx)
+                # print("Prototypes Indices Vector:", prototypes_idx)
                 
                 y_no_prototypes = vy[~torch.isin(torch.arange(vy.size(0)), prototypes_idx)]
 
@@ -395,13 +395,10 @@ def test_evaluate_prototypes(multitask_model: nn.Module,
                   batch_size=16,
                   results_dir="",
                   task_id=0,
-                  task_metadata=None,
-                  using_prototypes=False,
-                  prototypes_dataloader=None
+                  task_metadata=None
                  ):
     """
     Evaluates the model on all selected test sets and optionally displays results.
-
     Args:
         multitask_model (nn.Module): The trained multitask model to evaluate.
         selected_test_sets (list[Dataset]): List of test datasets for each task.
@@ -410,7 +407,6 @@ def test_evaluate_prototypes(multitask_model: nn.Module,
         baseline_taskwise_accs (list[float], optional): Baseline accuracies for comparison.
         model_name (str, optional): Name of the model to show in plots. Default is ''.
         verbose (bool, optional): If True, prints detailed evaluation results. Default is False.
-
     Returns:
         list[float]: Taskwise accuracies for the selected test sets.
     """
@@ -421,19 +417,17 @@ def test_evaluate_prototypes(multitask_model: nn.Module,
     task_test_accs = []
 
     # Iterate over each task's test dataset
-    for (t, test_data), prototypes in zip(enumerate(selected_test_sets), prototypes_dataloader):
-        prototypes = prototypes.to('cuda')[0]
-        
+    for t, test_data in enumerate(selected_test_sets):
         # Create a DataLoader for the current task's test dataset
         test_loader = utils.data.DataLoader(test_data,
                                        batch_size=batch_size,
                                        shuffle=True)
 
         # Evaluate the model on the current task
-        if using_prototypes:
-            task_test_loss, task_test_acc = evaluate_model_prototypes(multitask_model, test_loader, prototypes = prototypes, device='cuda')
-        else:
-            task_test_loss, task_test_acc = evaluate_model(multitask_model, test_loader)
+        task_test_loss, task_test_acc = evaluate_model_prototypes(multitask_model, test_loader,
+                                                       device='cuda',
+                                                       task_metadata=task_metadata,
+                                                       task_id=task_id)
 
         if verbose:
             print(f'{task_metadata[t]}: {task_test_acc:.2%}')
@@ -455,7 +449,7 @@ def test_evaluate_prototypes(multitask_model: nn.Module,
         bar_heights = task_test_accs + [0]*(len(task_test_sets) - len(selected_test_sets))
         # display bar plot with accuracy on each evaluation task
         plt.bar(x = range(len(task_test_sets)), height=bar_heights, zorder=1)
-        
+
         plt.xticks(
         range(len(task_test_sets)),
         [','.join(task_classes.values()) for t, task_classes in task_metadata.items()],
@@ -494,7 +488,7 @@ def test_evaluate_prototypes(multitask_model: nn.Module,
     return task_test_accs
 
 
-# Evaluate the model on the test sets of all tasks
+
 # Evaluate the model on the test sets of all tasks
 def test_evaluate(multitask_model: nn.Module, 
                   selected_test_sets,  
