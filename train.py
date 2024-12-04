@@ -57,12 +57,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
 TEST_FRAC = 0.1
-BATCH_SIZE = 32
+BATCH_SIZE = 700
 dataset = "Split-CIFAR100" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
 NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
 
 ### training hyperparameters:
-EPOCHS_PER_TIMESTEP = 3
+EPOCHS_PER_TIMESTEP = 15
 lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
@@ -94,8 +94,6 @@ backbone = 'resnet50'                  # ResNet50 backbone. others: ['mobilenetv
 task_head_projection_size = 256          # Even larger hidden layer in task head
 hyper_hidden_features = 256             # Larger hypernetwork hidden layer size
 hyper_hidden_layers = 4                 # Deeper hypernetwork
-
-
 
 # Initialize the model with the new configurations
 model = HyperCMTL(
@@ -142,7 +140,7 @@ prev_test_accs = []
 
 print("Starting training")
 
-with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as run:
+with wandb.init(project='HyperCMTL', name=f'HyperCMTL-learned_emb-{dataset}-{backbone}') as run:
 
     # outer loop over each task, in sequence
     for t, (task_train, task_val) in timestep_tasks.items():
@@ -255,6 +253,8 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
                             task_metadata=task_metadata,
                             )
         
+        wandb.log({'test_accuracy': np.mean(test_accs), 'task_id': t})
+
         prev_test_accs.append(test_accs)
 
         #store the current model as the previous model

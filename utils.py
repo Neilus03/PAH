@@ -709,6 +709,9 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
         class_to_idx = {orig: idx for idx, orig in enumerate(task_classes)}
         task_labels = [class_to_idx[int(label)] for label in task_labels_train]
 
+        # Map old labels to 0-based labels for the task for the test
+        task_labels_test = [class_to_idx[int(label)] for label in task_labels_test]
+
         # Create tensors
         task_images_train_tensor = torch.stack([preprocess(img) for img in task_images_train])
         task_labels_train_tensor = torch.tensor(task_labels, dtype=torch.long)

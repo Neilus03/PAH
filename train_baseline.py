@@ -269,7 +269,7 @@ prev_test_accs = []
 print("Starting training")
 
 
-with wandb.init(project='LwF_Baseline', name=f'LwF_Baseline-{dataset}-{backbone_name}') as run:
+with wandb.init(project='HyperCMTL', name=f'LwF_Baseline-{dataset}-{backbone_name}', group="CorrectSplit") as run:
     #wandb.watch(baseline_lwf_model, log='all', log_freq=100)
 
     # outer loop over each task, in sequence
