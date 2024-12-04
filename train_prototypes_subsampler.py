@@ -67,11 +67,11 @@ dataset = "Split-CIFAR100" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
 NUM_TASKS =5 if dataset == 'Split-MNIST' else 10
 
 ### training hyperparameters:
-EPOCHS_PER_TIMESTEP = 3
+EPOCHS_PER_TIMESTEP = 1
 lr     = 5e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
-stability = 7#`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
+stability = 1000#`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
 
 os.makedirs('results', exist_ok=True)
 # num = str(len(os.listdir('results/'))).zfill(3)
@@ -323,8 +323,10 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as 
                         new_prev_pred = model(x, prototypes_idx=prototypes_idx, task_id=old_task_id).squeeze(0)
                         soft_loss += distillation_output_loss(new_prev_pred, old_pred, temperature).mean().to(device)
                 
-                total_loss = hard_loss + stability * soft_loss
-                
+                if t > 0: 
+                    total_loss = soft_loss
+                else:
+                    total_loss = hard_loss + stability * soft_loss
                 total_loss.backward()
                 opt.step()
 
