@@ -187,8 +187,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
 TEST_FRAC = 0.1
-BATCH_SIZE = 128
-dataset = "TinyImageNet" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
+BATCH_SIZE = 64
+dataset = "Split-CIFAR100" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
 NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
 
 ### training hyperparameters:
@@ -227,9 +227,7 @@ task_head_projection_size = 256          # Even larger hidden layer in task head
 hyper_hidden_features = 256             # Larger hypernetwork hidden layer size
 hyper_hidden_layers = 4                 # Deeper hypernetwork
 
-patience = 5  # Number of epochs to wait for improvement
-best_val_acc = 0.0
-patience_counter = 0
+
 
 backbone = models.resnet50(pretrained=True)
 backbone.num_features = backbone.fc.in_features
@@ -272,7 +270,7 @@ print("Starting training")
 
 
 with wandb.init(project='LwF_Baseline', name=f'LwF_Baseline-{dataset}-{backbone_name}') as run:
-    wandb.watch(baseline_lwf_model, log='all', log_freq=100)
+    #wandb.watch(baseline_lwf_model, log='all', log_freq=100)
 
     # outer loop over each task, in sequence
     for t, (task_train, task_val) in timestep_tasks.items():
@@ -323,6 +321,8 @@ with wandb.init(project='LwF_Baseline', name=f'LwF_Baseline-{dataset}-{backbone_
                 #add the distillation loss to the total loss
                 total_loss = hard_loss + stability * soft_loss
                 
+                wandb.log({'hard_loss': hard_loss.item(), 'soft_loss': float(soft_loss), 'train_loss': total_loss.item(), 'epoch': e, 'task_id': t, 'batch_idx': batch_idx})
+
                 #backpropagate the loss
                 total_loss.backward()
                 opt.step()
@@ -340,6 +340,8 @@ with wandb.init(project='LwF_Baseline', name=f'LwF_Baseline-{dataset}-{backbone_
             # evaluate after each epoch on the current task's validation set:
             avg_val_loss, avg_val_acc = evaluate_model(baseline_lwf_model, val_loader, loss_fn)
             
+            wandb.log({'val_loss': avg_val_loss, 'val_accuracy': avg_val_acc, 'epoch': e, 'task_id': t})
+
             ### update metrics:
             metrics['epoch_steps'].append(metrics['steps_trained'])
             metrics['train_losses'].extend(epoch_train_losses)
@@ -375,6 +377,8 @@ with wandb.init(project='LwF_Baseline', name=f'LwF_Baseline-{dataset}-{backbone_
                                 #baseline_taskwise_accs = baseline_taskwise_test_accs, 
                                 verbose=True,
                                 task_metadata=task_metadata)
+        wandb.log({'mean test_acc': np.mean(test_accs), 'task_id': t})
+
         prev_test_accs.append(test_accs)
         
         #store the current baseline_lwf_model as the previous baseline_lwf_model
@@ -382,4 +386,5 @@ with wandb.init(project='LwF_Baseline', name=f'LwF_Baseline-{dataset}-{backbone_
 
     final_avg_test_acc = np.mean(test_accs)
     print(f'Final average test accuracy: {final_avg_test_acc:.2%}')
+    
    

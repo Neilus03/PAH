@@ -15,6 +15,10 @@ import pdb
 from tqdm import tqdm
 import pdb
 
+torch.random.manual_seed(42)
+np.random.seed(42)
+torch.cuda.manual_seed(42)
+
 def inspect_batch(images, labels=None, predictions=None, class_names=None, title=None,
                   center_title=True, max_to_show=16, num_cols=4, scale=1):
     """
@@ -619,14 +623,6 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
     if dataset_name == 'Split-MNIST':
         dataset_train = datasets.MNIST(root=data_dir, train=True, download=True)
         dataset_test = datasets.MNIST(root=data_dir, train=False, download=True)
-        #full dataset combines train and test
-        dataset = ConcatDataset([dataset_train, dataset_test])
-    
-        # dataset.targets = dataset_train.targets + dataset_test.targets
-        dataset.targets = torch.cat([dataset_train.targets, dataset_test.targets])
-        dataset.classes = dataset_train.classes
-        dataset.data = np.concatenate([dataset_train.data, dataset_test.data], axis=0)
-        
         
         num_classes = 10
         preprocess = transforms.Compose([
@@ -643,13 +639,6 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
     elif dataset_name == 'Split-CIFAR100':
         dataset_train = datasets.CIFAR100(root=data_dir, train=True, download=True)
         dataset_test = datasets.CIFAR100(root=data_dir, train=False, download=True)
-        #full dataset combines train and test
-        dataset = ConcatDataset([dataset_train, dataset_test])
-        #but ConcatDataset doesn't have a 'classes' attribute, so we need to add it:
-        print(len(dataset_train.targets), len(dataset_test.targets))
-        dataset.targets = dataset_train.targets + dataset_test.targets
-        dataset.classes = dataset_train.classes
-        dataset.data = np.concatenate([dataset_train.data, dataset_test.data], axis=0)
         
         
         num_classes = 100
@@ -664,7 +653,7 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
         }
 
     elif dataset_name == 'TinyImageNet':
-        dataset = datasets.ImageFolder(os.path.join(data_dir, 'tiny-imagenet-200', 'train'))
+        dataset_train = datasets.ImageFolder(os.path.join(data_dir, 'tiny-imagenet-200', 'train'))
         num_classes = 200
         preprocess = transforms.Compose([
             transforms.Resize((64, 64)),
@@ -680,61 +669,77 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
     
-    images_per_class = {}
+    train_images_per_class = {}
     for class_idx in tqdm(range(num_classes)):
-        indices = [i for i, label in enumerate(dataset.targets) if label == class_idx]
-        images_per_class[class_idx] = indices  # Store indices instead of images
+        indices = [i for i, label in enumerate(dataset_train.targets) if label == class_idx]
+        train_images_per_class[class_idx] = indices  # Store indices instead of images
         # If you need images elsewhere, consider storing them separately or processing them on-the-fly
         
     # Process tasks
     for t, task_classes in timestep_task_classes.items():
         if dataset_name == 'Split-MNIST':
-            task_indices = [i for i, label in enumerate(dataset.targets) if label in task_classes]
-            task_images = [Image.fromarray(dataset.data[i], mode='L') for i in task_indices]
-            task_labels = [label for i, label in enumerate(dataset.targets) if label in task_classes]
+            task_indices_train = [i for i, label in enumerate(dataset_train.targets) if label in task_classes]
+            task_images_train = [Image.fromarray(dataset_train.data[i], mode='L') for i in task_indices_train]
+            task_labels_train = [label for i, label in enumerate(dataset_train.targets) if label in task_classes]
+            task_indices_test = [i for i, label in enumerate(dataset_test.targets) if label in task_classes]
+            task_images_test = [Image.fromarray(dataset_test.data[i], mode='L') for i in task_indices_test]
+            task_labels_test = [label for i, label in enumerate(dataset_test.targets) if label in task_classes]
 
         elif dataset_name == 'Split-CIFAR100':
-            task_indices = [i for i, label in enumerate(dataset.targets) if label in task_classes]
-            task_images = [Image.fromarray(dataset.data[i]) for i in task_indices]
-            task_labels = [label for i, label in enumerate(dataset.targets) if label in task_classes]
+            task_indices_train = [i for i, label in enumerate(dataset_train.targets) if label in task_classes]
+            task_images_train = [Image.fromarray(dataset_train.data[i]) for i in task_indices_train]
+            task_labels_train = [label for i, label in enumerate(dataset_train.targets) if label in task_classes]
+            task_indices_test = [i for i, label in enumerate(dataset_test.targets) if label in task_classes]
+            task_images_test = [Image.fromarray(dataset_test.data[i]) for i in task_indices_test]
+            task_labels_test = [label for i, label in enumerate(dataset_test.targets) if label in task_classes]
 
         elif dataset_name == 'TinyImageNet':
-            task_indices = [i for i, (_, label) in enumerate(dataset.samples) if label in task_classes]
-            task_images = [dataset[i][0] for i in task_indices]
-            task_labels = [label for i, (_, label) in enumerate(dataset.samples) if label in task_classes]
+            task_indices_train = [i for i, (_, label) in enumerate(dataset_train.samples) if label in task_classes]
+            task_images_train = [dataset_train[i][0] for i in task_indices_train]
+            task_labels_train = [label for i, (_, label) in enumerate(dataset_train.samples) if label in task_classes]
+            task_indices_test = [i for i, (_, label) in enumerate(dataset_test.samples) if label in task_classes]
+            task_images_test = [dataset_test[i][0] for i in task_indices_test]
+            task_labels_test = [label for i, (_, label) in enumerate(dataset_test.samples) if label in task_classes]
 
+    
 
     
         
         # Map old labels to 0-based labels for the task
         class_to_idx = {orig: idx for idx, orig in enumerate(task_classes)}
-        task_labels = [class_to_idx[int(label)] for label in task_labels]
+        task_labels = [class_to_idx[int(label)] for label in task_labels_train]
 
         # Create tensors
-        task_images_tensor = torch.stack([preprocess(img) for img in task_images])
-        task_labels_tensor = torch.tensor(task_labels, dtype=torch.long)
-        task_ids_tensor = torch.full((len(task_labels_tensor),), t, dtype=torch.long)
+        task_images_train_tensor = torch.stack([preprocess(img) for img in task_images_train])
+        task_labels_train_tensor = torch.tensor(task_labels, dtype=torch.long)
+        task_ids_train_tensor = torch.full((len(task_labels_train_tensor),), t, dtype=torch.long)
 
         # TensorDataset
-        task_dataset = TensorDataset(task_images_tensor, task_labels_tensor, task_ids_tensor)
+        task_dataset_train = TensorDataset(task_images_train_tensor, task_labels_train_tensor, task_ids_train_tensor)
 
         # Train/Validation/Test split
-        train_size = int((1 - val_frac - test_frac) * len(task_dataset))
-        val_size = int(val_frac * len(task_dataset))
-        test_size = len(task_dataset) - train_size - val_size
-        train_set, val_set, test_set = random_split(task_dataset, [train_size, val_size, test_size])
+        train_size = int((1 - val_frac) * len(task_dataset_train))
+        val_size = int(val_frac * len(task_dataset_train))
 
+        
+        train_set, val_set = random_split(task_dataset_train, [train_size, val_size])
+        
+        task_images_test_tensor = torch.stack([preprocess(img) for img in task_images_test])
+        task_labels_test_tensor = torch.tensor(task_labels_test, dtype=torch.long)
+        task_ids_test_tensor = torch.full((len(task_labels_test_tensor),), t, dtype=torch.long)
+        
+        test_set = TensorDataset(task_images_test_tensor, task_labels_test_tensor, task_ids_test_tensor)
 
         # Store datasets and metadata
         timestep_tasks[t] = (train_set, val_set)
         task_test_sets.append(test_set)
         if dataset_name == 'TinyImagenet':
             task_metadata[t] = {
-                idx: os.path.basename(dataset.classes[orig]) for orig, idx in class_to_idx.items()
+                idx: os.path.basename(dataset_train.classes[orig]) for orig, idx in class_to_idx.items()
             }
         else:
             task_metadata[t] = {
-                idx: dataset.classes[orig] if hasattr(dataset, 'classes') else str(orig)
+                idx: dataset_train.classes[orig] if hasattr(dataset_train, 'classes') else str(orig)
                 for orig, idx in class_to_idx.items()
             }
 
@@ -749,7 +754,7 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
         'final_test_loader': final_test_loader,
         'task_metadata': task_metadata,
         'task_test_sets': task_test_sets,
-        'images_per_class': images_per_class,
+        'images_per_class': train_images_per_class,
         'timestep_task_classes': timestep_task_classes
     }
 
