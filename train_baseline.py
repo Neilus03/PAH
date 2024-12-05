@@ -48,14 +48,14 @@ import pdb
 import random
 from torch.utils.data import Sampler
 
-
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 ### as before, define a classification head that we can attach to the backbone:
 class TaskHead(nn.Module):
     def __init__(self, input_size: int, # number of features in the backbone's output
                  projection_size: int,  # number of neurons in the hidden layer
                  num_classes: int,      # number of output neurons
                  dropout: float=0.,     # optional dropout rate to apply
-                 device='cuda'):
+                 device=device):
         super().__init__()
         
         self.projection = nn.Linear(input_size, projection_size)
@@ -84,7 +84,7 @@ class TaskHead(nn.Module):
 ### and performs task-ID routing at runtime, allowing it to perform any learned task:
 class MultitaskModel(nn.Module):
     def __init__(self, backbone: nn.Module, 
-                 device='cuda'):
+                 device=device):
         super().__init__()
 
         self.backbone = backbone
@@ -137,7 +137,6 @@ torch.manual_seed(0)
 
 torch.cuda.empty_cache()
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
@@ -152,6 +151,7 @@ lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
 stability = 5 #`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
+freeze_backbone = True
 
 os.makedirs('results', exist_ok=True)
 # num = str(len(os.listdir('results/'))).zfill(3)
@@ -186,6 +186,10 @@ hyper_hidden_layers = 4                 # Deeper hypernetwork
 
 backbone = models.resnet50(pretrained=True)
 backbone.num_features = backbone.fc.in_features
+
+if freeze_backbone:
+    for param in backbone.parameters():
+        param.requires_grad = False
 
 baseline_lwf_model = MultitaskModel(backbone.to(device))
 
