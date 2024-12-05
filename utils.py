@@ -28,7 +28,7 @@ torch.cuda.manual_seed(69)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:3' if torch.cuda.is_available() else 'cpu')
 def inspect_batch(images, labels=None, predictions=None, class_names=None, title=None,
                   center_title=True, max_to_show=16, num_cols=4, scale=1):
     """
