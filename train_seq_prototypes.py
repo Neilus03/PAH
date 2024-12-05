@@ -67,7 +67,7 @@ device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 ### Dataset hyperparameters:
 VAL_FRAC = 0.1
 TEST_FRAC = 0.1
-BATCH_SIZE = 128
+BATCH_SIZE = 256
 dataset = "Split-CIFAR100"  # Options: "Split-MNIST", "Split-CIFAR100", "TinyImageNet"
 NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
 
@@ -76,7 +76,7 @@ EPOCHS_PER_TIMESTEP = 15
 lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
-stability = 3  # `stability` term to balance this soft loss with the usual hard label loss for the current classification task.
+stability = 5  # `stability` term to balance this soft loss with the usual hard label loss for the current classification task.
 
 # Create results directory
 os.makedirs('results', exist_ok=True)
@@ -121,11 +121,13 @@ prototype_indices = data['prototype_indices']
 backbone = 'resnet50'  # Options: ['mobilenetv2', 'efficientnetb0', 'vit'] (vit not yet working)
 task_head_projection_size = 512  # Even larger hidden layer in task head
 hyper_hidden_features = 256  # Larger hypernetwork hidden layer size
-hyper_hidden_layers = 4  # Deeper hypernetwork
+hyper_hidden_layers = 6  # Deeper hypernetwork
+freeze_backbone = False  # Freeze the backbone weights
 
 # Initialize the model with the new configurations
 model = HyperCMTL_seq_prototype_simple(
     num_instances=len(task_metadata),
+    freeze_backbone=freeze_backbone,
     backbone=backbone,
     task_head_projection_size=task_head_projection_size,
     task_head_num_classes=len(task_metadata[0]),
@@ -134,6 +136,8 @@ model = HyperCMTL_seq_prototype_simple(
     device=device,
     std=0.01
 ).to(device)
+
+
 
 # Log the model architecture and configuration
 logger.log(f'Model architecture: {model}')
@@ -167,8 +171,8 @@ metrics = {
 prev_test_accs = []
 
 print("Starting training")
-
-with wandb.init(project='HyperCMTL', name=f'HyperCMTL_1seq-prototypes-{dataset}-{backbone}') as run:
+frozen = 'frozen' if freeze_backbone == True else ""
+with wandb.init(project='HyperCMTL', name=f'HyperCMTL_1seq-prototypes-{dataset}-{backbone}-{frozen}') as run:
 
     # Outer loop over each task, in sequence
     for t, (task_train, task_val) in tqdm(timestep_tasks.items(), desc="Processing Tasks"):
@@ -331,41 +335,7 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL_1seq-prototypes-{dataset}-
 
         # Append test accuracies
         prev_test_accs.append(test_accs)
-        '''
-        # ----------- Prototype Integration Starts Here -----------
 
-        # Retrieve prototypes for the current task
-        # Shape: (num_classes_per_task, C, H, W)
-        current_prototypes = task_prototypes[t].to(device)
-
-        # Forward pass through the model to get prototype outputs
-        proto_preds = model(current_prototypes, current_prototypes, t)  # Note: passing prototypes as support_set as well
-
-        # Define prototype loss
-        # Example: MSE Loss between current prototype predictions and stored prototype outputs
-        # Initialize a dictionary to store prototype outputs per task
-        if 'stored_proto_outputs' not in locals():
-            stored_proto_outputs = {}
-
-        if previous_model is not None and t > 0:
-            # Retrieve stored prototype outputs from previous model
-            stored_proto = stored_proto_outputs[t]
-            # Compute prototype loss
-            proto_loss = F.mse_loss(proto_preds, stored_proto)
-            # Backward pass
-            opt.zero_grad()
-            proto_loss.backward()
-            # Optimization step
-            opt.step()
-            # Log prototype loss
-            logger.log(f'Task {t} Prototype loss: {proto_loss.item():.4f}')
-            wandb.log({'prototype_loss': proto_loss.item(), 'task_id': t, 'epoch': e})
-
-        # Store current prototype outputs for future tasks
-        stored_proto_outputs[t] = proto_preds.detach()
-
-        # ----------- Prototype Integration Ends Here -----------
-        '''
         #store the current model as the previous model
         previous_model = model.deepcopy()
         previous_model.eval()  # Set to evaluation mode

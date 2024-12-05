@@ -923,6 +923,7 @@ class HyperCMTL_seq_prototype_simple(nn.Module):
     def __init__(self,
                  num_instances=1,
                  backbone='resnet50',  # Backbone architecture
+                 freeze_backbone=False,
                  task_head_projection_size=64,             # Task head hidden layer size
                  task_head_num_classes=2,                  # Task head output size
                  hyper_hidden_features=256,                # Hypernetwork hidden layer size
@@ -935,6 +936,7 @@ class HyperCMTL_seq_prototype_simple(nn.Module):
 
         self.num_instances = num_instances
         self.backbone_name = backbone
+        self.freeze_backbone = freeze_backbone
         self.task_head_projection_size = task_head_projection_size
         self.task_head_num_classes = task_head_num_classes
         self.hyper_hidden_features = hyper_hidden_features
@@ -954,12 +956,16 @@ class HyperCMTL_seq_prototype_simple(nn.Module):
         else: 
             raise ValueError(f"Backbone {backbone} is not supported.")
         
+        if self.freeze_backbone:
+            for param in self.backbone.parameters():
+                param.requires_grad = False
+        
         #Copy the backbone to be used for prototype extraction
         self.backbone_prototype_frozen = deepcopy(self.backbone)
         
         # freeze the backbone for prototype extraction
-        for param in self.backbone_prototype_frozen.parameters():
-            param.requires_grad = False
+        #for param in self.backbone_prototype_frozen.parameters():
+        #    param.requires_grad = False
         
         # freeze the backbone 
         # for param in self.backbone.parameters():
