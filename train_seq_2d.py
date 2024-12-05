@@ -49,18 +49,18 @@ import logging
 import pdb
 import random
 
-torch.manual_seed(42)
-np.random.seed(42)
-random.seed(42)
-torch.cuda.manual_seed_all(42)
-torch.cuda.manual_seed(42)
+torch.manual_seed(69)
+np.random.seed(69)
+random.seed(69)
+torch.cuda.manual_seed_all(69)
+torch.cuda.manual_seed(69)
 
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
 torch.cuda.empty_cache()
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:5" if torch.cuda.is_available() else "cpu")
 
 ### dataset hyperparameters:
 VAL_FRAC = 0.1

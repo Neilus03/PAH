@@ -20,11 +20,11 @@ import random
 from torch.utils.data import Sampler
 
 
-torch.manual_seed(42)
-np.random.seed(42)
-random.seed(42)
-torch.cuda.manual_seed_all(42)
-torch.cuda.manual_seed(42)
+torch.manual_seed(69)
+np.random.seed(69)
+random.seed(69)
+torch.cuda.manual_seed_all(69)
+torch.cuda.manual_seed(69)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
@@ -629,9 +629,26 @@ def test_evaluate_2d(multitask_model: nn.Module,
 
     # Calculate average test loss and accuracy across all tasks
     avg_task_test_acc = np.mean(task_test_accs)
-
+    
+    # # Calculate the forgetting metric
+    # if prev_accs is not None:
+    #     forgetting = [prev - acc for prev, acc in zip(prev_accs, task_test_accs)]
+    #     avg_forgetting = np.mean(forgetting)
+    #     print(f'Average forgetting: {avg_forgetting:.2})')
+        
+    # # Calculate the Forward Transfer metric
+    # if prev_accs is not None:
+    #     forward_transfer = [acc / prev for prev, acc in zip(prev_accs, task_test_accs)]
+    #     avg_forward_transfer = np.mean(forward_transfer)
+    #     print(f'Average forward transfer: {avg_forward_transfer:.2})')
+    
+    
     if verbose:
         print(f'\n +++ AVERAGE TASK TEST ACCURACY: {avg_task_test_acc:.2%} +++ ')
+    
+    # # Log the Forgetting and Backward Transfer metrics to wandb
+    # wandb.log({f'average forgetting': avg_forgetting, 'task': task_id})
+    # wandb.log({f'taskwise accuracy': avg_task_test_acc, 'task': task_id})
 
     # Plot taskwise accuracy if enabled
     bar_heights = task_test_accs + [0]*(len(task_test_sets) - len(selected_test_sets))
@@ -1315,9 +1332,9 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     # Set random seeds for reproducibility
-    random.seed(42)
-    np.random.seed(42)
-    torch.manual_seed(42)
+    random.seed(69)
+    np.random.seed(69)
+    torch.manual_seed(69)
 
     # Parameters for the setup
     dataset_name = 'Split-CIFAR100'  # Change as needed: 'Split-MNIST', 'Split-CIFAR100', 'TinyImageNet'

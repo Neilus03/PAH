@@ -18,11 +18,11 @@ from copy import deepcopy
 from backbones import ResNet50, MobileNetV2, EfficientNetB0
 import random
 
-torch.manual_seed(42)
-np.random.seed(42)
-random.seed(42)
-torch.cuda.manual_seed_all(42)
-torch.cuda.manual_seed(42)
+torch.manual_seed(69)
+np.random.seed(69)
+random.seed(69)
+torch.cuda.manual_seed_all(69)
+torch.cuda.manual_seed(69)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
@@ -1369,7 +1369,7 @@ class TaskHead(MetaModule):
                  projection_size: int,  # number of neurons in the hidden layer
                  num_classes: int,      # number of output neurons
                  dropout: float=0.,     # optional dropout rate to apply
-                 device="cuda"):
+                 device=device):
         super().__init__()
 
         self.projection = BatchLinear(input_size, projection_size)
@@ -1406,7 +1406,7 @@ class TaskHead_simple(MetaModule):
                  projection_size: int,  # number of neurons in the hidden layer
                  num_classes: int,      # number of output neurons
                  dropout: float=0.,     # optional dropout rate to apply
-                 device="cuda"):
+                 device=device):
         super().__init__()
 
         self.input_size = input_size

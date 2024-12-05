@@ -61,7 +61,7 @@ np.random.seed(42)
 torch.cuda.empty_cache()
 
 # Determine device
-device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
 
 ### Dataset hyperparameters:
