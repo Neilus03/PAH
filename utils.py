@@ -679,10 +679,10 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
     for t, task_classes in timestep_task_classes.items():
         if dataset_name == 'Split-MNIST':
             task_indices_train = [i for i, label in enumerate(dataset_train.targets) if label in task_classes]
-            task_images_train = [Image.fromarray(dataset_train.data[i], mode='L') for i in task_indices_train]
+            task_images_train = [Image.fromarray(np.array(dataset_train.data[i]), mode='L') for i in task_indices_train]
             task_labels_train = [label for i, label in enumerate(dataset_train.targets) if label in task_classes]
             task_indices_test = [i for i, label in enumerate(dataset_test.targets) if label in task_classes]
-            task_images_test = [Image.fromarray(dataset_test.data[i], mode='L') for i in task_indices_test]
+            task_images_test = [Image.fromarray(np.array(dataset_test.data[i]), mode='L') for i in task_indices_test]
             task_labels_test = [label for i, label in enumerate(dataset_test.targets) if label in task_classes]
 
         elif dataset_name == 'Split-CIFAR100':
@@ -722,7 +722,7 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
 
         # Train/Validation/Test split
         train_size = int((1 - val_frac) * len(task_dataset_train))
-        val_size = int(val_frac * len(task_dataset_train))
+        val_size = len(task_dataset_train) - train_size
 
         
         train_set, val_set = random_split(task_dataset_train, [train_size, val_size])

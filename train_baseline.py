@@ -187,12 +187,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
 TEST_FRAC = 0.1
-BATCH_SIZE = 64
-dataset = "Split-CIFAR100" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
+BATCH_SIZE = 512
+dataset = "TinyImageNet" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
 NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
 
 ### training hyperparameters:
-EPOCHS_PER_TIMESTEP = 15
+EPOCHS_PER_TIMESTEP = 7
 lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
@@ -377,7 +377,7 @@ with wandb.init(project='HyperCMTL', name=f'LwF_Baseline-{dataset}-{backbone_nam
                                 #baseline_taskwise_accs = baseline_taskwise_test_accs, 
                                 verbose=True,
                                 task_metadata=task_metadata)
-        wandb.log({'mean test_acc': np.mean(test_accs), 'task_id': t})
+        wandb.log({'mean_test_acc': np.mean(test_accs), 'task_id': t})
 
         prev_test_accs.append(test_accs)
         
@@ -386,5 +386,5 @@ with wandb.init(project='HyperCMTL', name=f'LwF_Baseline-{dataset}-{backbone_nam
 
     final_avg_test_acc = np.mean(test_accs)
     print(f'Final average test accuracy: {final_avg_test_acc:.2%}')
-    
+    wandb.summary['final_avg_test_acc'] = final_avg_test_acc 
    

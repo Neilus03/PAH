@@ -34,8 +34,8 @@ import os
 # Functions from utils to help with training and evaluation
 from utils import inspect_batch, test_evaluate, training_plot, setup_dataset, inspect_task, distillation_output_loss, evaluate_model, get_batch_acc, logger
 
-# Import the HyperCMTL model architecture
-from hypernetwork import HyperCMTL
+# Import the HyperCMTL_seq model architecture
+from hypernetwork import HyperCMTL_seq, HyperCMTL_seq_simple
 
 # Import the wandb library for logging metrics and visualizations
 import wandb
@@ -57,21 +57,21 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
 TEST_FRAC = 0.1
-BATCH_SIZE = 512
+BATCH_SIZE = 128
 dataset = "Split-CIFAR100" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
 NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
 
 ### training hyperparameters:
-EPOCHS_PER_TIMESTEP = 7
+EPOCHS_PER_TIMESTEP = 15
 lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
-stability = 5 #`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
+stability = 1 #`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
 
 os.makedirs('results', exist_ok=True)
 # num = str(len(os.listdir('results/'))).zfill(3)
 num = time.strftime("%m%d-%H%M%S")
-results_dir = 'results/' + num + '-HyperCMTL'
+results_dir = 'results/' + num + '-HyperCMTL_seq'
 os.makedirs(results_dir, exist_ok=True)
 
 logger = logger(results_dir)
@@ -93,10 +93,10 @@ task_test_sets = data['task_test_sets']
 backbone = 'resnet50'                  # ResNet50 backbone. others: ['mobilenetv2', 'efficientnetb0', 'vit'] #vit not yet working
 task_head_projection_size = 512          # Even larger hidden layer in task head
 hyper_hidden_features = 256             # Larger hypernetwork hidden layer size
-hyper_hidden_layers = 12                 # Deeper hypernetwork
+hyper_hidden_layers = 4                 # Deeper hypernetwork
 
 # Initialize the model with the new configurations
-model = HyperCMTL(
+model = HyperCMTL_seq_simple(
     num_instances=len(task_metadata),
     backbone=backbone,
     task_head_projection_size=task_head_projection_size,
@@ -140,7 +140,7 @@ prev_test_accs = []
 
 print("Starting training")
 
-with wandb.init(project='HyperCMTL', name=f'HyperCMTL-learned_emb-{dataset}-{backbone}') as run:
+with wandb.init(project='HyperCMTL', name=f'HyperCMTL_seq-learned_emb-{dataset}-{backbone}') as run:
 
     # outer loop over each task, in sequence
     for t, (task_train, task_val) in timestep_tasks.items():
@@ -245,7 +245,7 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL-learned_emb-{dataset}-{bac
                             prev_accs = prev_test_accs,
                             show_taskwise_accuracy=True, 
                             baseline_taskwise_accs = None, 
-                            model_name= 'HyperCMTL + LwF', 
+                            model_name= 'HyperCMTL_seq + LwF', 
                             verbose=True, 
                             batch_size=BATCH_SIZE,
                             results_dir=results_dir,
