@@ -78,54 +78,6 @@ class TaskHead(nn.Module):
         x = self.classifier(self.relu(self.dropout(x)))
 
         return x
-
-class MultitaskModel(nn.Module):
-    def __init__(self, backbone: nn.Module,
-                 device="cuda"):
-        super().__init__()
-
-        self.backbone = backbone
-
-        # a dict mapping task IDs to the classification heads for those tasks:
-        self.task_heads = nn.ModuleDict()
-        # we must use a nn.ModuleDict instead of a base python dict,
-        # to ensure that the modules inside are properly registered in self.parameters() etc.
-
-        self.relu = nn.ReLU()
-        self.device = device
-        self.to(device)
-
-    def forward(self,
-                x: torch.Tensor,
-                task_id: int):
-
-        task_id = str(int(task_id))
-        # nn.ModuleDict requires string keys for some reason,
-        # so we have to be sure to cast the task_id from tensor(2) to 2 to '2'
-
-        assert task_id in self.task_heads, f"no head exists for task id {task_id}"
-
-        # select which classifier head to use:
-        chosen_head = self.task_heads[task_id]
-
-        # activated features from backbone:
-        x = self.relu(self.backbone(x))
-        # task-specific prediction:
-        x = chosen_head(x)
-
-        return x
-
-    def add_task(self,
-                 task_id: int,
-                 head: nn.Module):
-        """accepts an integer task_id and a classification head
-        associated to that task.
-        adds the head to this baseline_lwf_model's collection of task heads."""
-        self.task_heads[str(task_id)] = head
-
-    @property
-    def num_task_heads(self):
-        return len(self.task_heads)
     
     
 ### and a baseline_lwf_model that contains a backbone plus multiple class heads,
@@ -136,6 +88,9 @@ class MultitaskModel(nn.Module):
         super().__init__()
 
         self.backbone = backbone
+
+        for param in self.backbone.parameters():
+            param.requires_grad = False
 
         # a dict mapping task IDs to the classification heads for those tasks:
         self.task_heads = nn.ModuleDict()        
@@ -188,11 +143,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 VAL_FRAC = 0.1
 TEST_FRAC = 0.1
 BATCH_SIZE = 512
-dataset = "TinyImageNet" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
+dataset = "Split-CIFAR100" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
 NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
 
 ### training hyperparameters:
-EPOCHS_PER_TIMESTEP = 7
+EPOCHS_PER_TIMESTEP = 15
 lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
@@ -268,10 +223,36 @@ prev_test_accs = []
 
 print("Starting training")
 
+def count_optimizer_parameters(optimizer: torch.optim.Optimizer) -> None:
+    """
+    Prints the number of parameters in each parameter group of the optimizer
+    and the total number of unique parameters being optimized.
+    
+    Args:
+        optimizer (torch.optim.Optimizer): The optimizer instance to inspect.
+    """
+    total_params = 0
+    unique_params = set()
+    
+    print("\n=== Optimizer Parameter Groups ===")
+    for idx, param_group in enumerate(optimizer.param_groups):
+        num_params = len(param_group['params'])
+        # Calculate the total number of parameters in this group
+        num_params_in_group = sum(p.numel() for p in param_group['params'])
+        print(f"Parameter Group {idx + 1}: {num_params} parameters, Total Parameters: {num_params_in_group}")
+        total_params += num_params_in_group
+        # Add to the set of unique parameters to avoid double-counting
+        for p in param_group['params']:
+            unique_params.add(p)
+    
+    print(f"Total Optimized Parameters: {total_params} ({sum(p.numel() for p in unique_params)} unique)")
+    print("===================================\n")
+
 
 with wandb.init(project='HyperCMTL', name=f'LwF_Baseline-{dataset}-{backbone_name}', group="CorrectSplit") as run:
     #wandb.watch(baseline_lwf_model, log='all', log_freq=100)
 
+    count_optimizer_parameters(opt)
     # outer loop over each task, in sequence
     for t, (task_train, task_val) in timestep_tasks.items():
         task_train.num_classes = len(timestep_task_classes[t])
@@ -280,8 +261,9 @@ with wandb.init(project='HyperCMTL', name=f'LwF_Baseline-{dataset}-{backbone_nam
         if t not in baseline_lwf_model.task_heads:
             task_head = TaskHead(input_size=1000, projection_size=64, num_classes=task_train.num_classes).to(device)
             baseline_lwf_model.add_task(t, task_head)
+            opt.add_param_group({'params': task_head.parameters()})
+            count_optimizer_parameters(opt)
 
-    
         # build train and validation loaders for the current task:
         train_loader, val_loader = [utils.data.DataLoader(data,
                                         batch_size=BATCH_SIZE,

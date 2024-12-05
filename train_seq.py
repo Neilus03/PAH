@@ -66,7 +66,7 @@ EPOCHS_PER_TIMESTEP = 15
 lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
-stability = 1 #`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
+stability = 5 #`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
 
 os.makedirs('results', exist_ok=True)
 # num = str(len(os.listdir('results/'))).zfill(3)

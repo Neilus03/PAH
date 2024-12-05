@@ -457,8 +457,8 @@ class HyperCMTL_seq_simple(nn.Module):
         
 
         # freeze the backbone 
-        for param in self.backbone.parameters():
-            param.requires_grad = False
+        # for param in self.backbone.parameters():
+        #     param.requires_grad = False
 
         # Task head
         self.task_head = TaskHead_simple(input_size=self.backbone.num_features,
@@ -472,6 +472,7 @@ class HyperCMTL_seq_simple(nn.Module):
         self.hyper_emb = nn.Embedding(self.num_instances, 4096)
         nn.init.normal_(self.hyper_emb.weight, mean=0, std=std)
         
+
         
         self.hn_in = 4096
         self.hypernet = HyperNetwork_seq(hyper_in_features=self.hn_in,
