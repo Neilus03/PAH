@@ -89,8 +89,8 @@ class MultitaskModel(nn.Module):
 
         self.backbone = backbone
 
-        for param in self.backbone.parameters():
-            param.requires_grad = False
+        # for param in self.backbone.parameters():
+        #     param.requires_grad = False
 
         # a dict mapping task IDs to the classification heads for those tasks:
         self.task_heads = nn.ModuleDict()        

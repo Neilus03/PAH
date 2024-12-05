@@ -389,7 +389,6 @@ class HyperNetwork_seq(nn.Module):
 
         # Extract parameter names, shapes, and initialize FCBlocks for each parameter
         hypo_parameters = hypo_module.state_dict().items()
-        print(f'Hypo parameters:', [(name, _.shape)  for name, _ in hypo_parameters])
 
         self.names = []  # Stores the names of the parameters in the hypo module
         self.nets = nn.ModuleList()  # Stores the FCBlock for each parameter

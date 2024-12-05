@@ -338,6 +338,65 @@ def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi
     # Return average loss and accuracy across all batches
     return np.mean(batch_val_losses), np.mean(batch_val_accs)
 
+def evaluate_model_2d(multitask_model: nn.Module,  # trained model capable of multi-task classification
+                   val_loader: utils.data.DataLoader,  # task-specific data to evaluate on
+                   loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
+                   device = 'cuda',
+                   task_metadata = None,
+                   task_id = 0,
+                   wandb_run = None
+                  ):
+    """
+    Evaluates the model on a validation dataset.
+
+    Args:
+        multitask_model (nn.Module): The trained multitask model to evaluate.
+        val_loader (DataLoader): DataLoader for the validation dataset.
+        loss_fn (_Loss, optional): Loss function to calculate validation loss. Default is CrossEntropyLoss.
+
+    Returns:
+        tuple: Average validation loss and accuracy across all batches.
+    """
+    with torch.no_grad():
+        batch_val_losses, batch_val_accs = [], []
+        batch_val_losses_prototypes, batch_val_accs_prototypes = [], []
+
+        fig, ax = plt.subplots(len(task_metadata[int(task_id)]), 1, figsize=(10, 10))
+        ax = ax.flatten()
+        prototypes = multitask_model.get_prototypes(task_id)
+        for i in range(len(task_metadata[int(task_id)])):
+            ax[i].imshow(prototypes[i].cpu().detach().numpy().reshape(3, 20, 20).transpose(1, 2, 0) * 255)
+            ax[i].axis('off')
+        file_name = f'prototypes_{int(task_id)}_{wandb_run}.png'
+        plt.savefig(file_name)
+        wandb.log({f'prototypes_{int(task_id)}': wandb.Image(file_name), 'task': task_id})
+        plt.close()
+
+        # Iterate over all batches in the validation DataLoader
+        for batch in val_loader:
+            vx, vy, task_ids = batch
+            vx, vy = vx.to(device), vy.to(device)
+
+            # Forward pass with task-specific parameters
+            vpred, vpred_prototypes = multitask_model(vx, task_ids[0])
+
+            # Calculate loss and accuracy for the batch
+            val_loss = loss_fn(vpred, vy)
+            vy_prototypes = torch.arange(len(task_metadata[int(task_id)]), device=device, dtype=torch.int64)         
+            val_loss_prototypes = loss_fn(vpred_prototypes, vy_prototypes)
+
+            val_acc = get_batch_acc(vpred, vy)
+            val_acc_prototypes = get_batch_acc(vpred_prototypes, vy_prototypes)
+
+            batch_val_losses.append(val_loss.item())
+            batch_val_accs.append(val_acc)
+
+            batch_val_losses_prototypes.append(val_loss_prototypes.item())
+            batch_val_accs_prototypes.append(val_acc_prototypes)
+
+    # Return average loss and accuracy across all batches
+    return np.mean(batch_val_losses), np.mean(batch_val_accs) , np.mean(batch_val_losses_prototypes), np.mean(batch_val_accs_prototypes)
+
 
 def evaluate_model_prototypes(multitask_model: nn.Module,  # trained model capable of multi-task classification
                      val_loader: utils.data.DataLoader,  # task-specific data to evaluate on
@@ -494,6 +553,118 @@ def test_evaluate_prototypes(multitask_model: nn.Module,
 
     return task_test_accs
 
+
+# Evaluate the model on the test sets of all tasks
+def test_evaluate_2d(multitask_model: nn.Module, 
+                  selected_test_sets,  
+                  task_test_sets, 
+                  prev_accs = None,
+                  prev_accs_prot = None,
+                  show_taskwise_accuracy=True, 
+                  baseline_taskwise_accs = None, 
+                  model_name: str='', 
+                  verbose=False, 
+                  batch_size=16,
+                  results_dir="",
+                  task_id=0,
+                  task_metadata=None,
+                  wandb_run = None
+                 ):
+    """
+    Evaluates the model on all selected test sets and optionally displays results.
+    Args:
+        multitask_model (nn.Module): The trained multitask model to evaluate.
+        selected_test_sets (list[Dataset]): List of test datasets for each task.
+        prev_accs (list[list[float]], optional): Previous accuracies for tracking forgetting.
+        show_taskwise_accuracy (bool, optional): If True, plots a bar chart of taskwise accuracies.
+        baseline_taskwise_accs (list[float], optional): Baseline accuracies for comparison.
+        model_name (str, optional): Name of the model to show in plots. Default is ''.
+        verbose (bool, optional): If True, prints detailed evaluation results. Default is False.
+    Returns:
+        list[float]: Taskwise accuracies for the selected test sets.
+    """
+    if verbose:
+        print(f'{model_name} evaluation on test set of all tasks:'.capitalize())
+
+    task_test_losses = []
+    task_test_accs = []
+    task_test_losses_prot = []
+    task_test_accs_prot = []
+
+    # Iterate over each task's test dataset
+    for t, test_data in enumerate(selected_test_sets):
+        # Create a DataLoader for the current task's test dataset
+        test_loader = utils.data.DataLoader(test_data,
+                                       batch_size=batch_size,
+                                       shuffle=True)
+
+        # Evaluate the model on the current task
+        task_test_loss, task_test_acc, task_test_loss_prot, task_test_acc_prot, = evaluate_model_2d(multitask_model, test_loader, task_metadata=task_metadata, task_id=task_id, wandb_run=wandb_run)
+
+        print(f'{task_metadata[t]}: {task_test_acc:.2%}')
+        print(f'{task_metadata[t]} prototypes: {task_test_acc_prot:.2%}')
+
+        task_test_losses.append(task_test_loss)
+        task_test_accs.append(task_test_acc)
+
+        task_test_losses_prot.append(task_test_loss_prot)
+        task_test_accs_prot.append(task_test_acc_prot)
+
+    # Calculate average test loss and accuracy across all tasks
+    avg_task_test_acc = np.mean(task_test_accs)
+
+    if verbose:
+        print(f'\n +++ AVERAGE TASK TEST ACCURACY: {avg_task_test_acc:.2%} +++ ')
+
+    # Plot taskwise accuracy if enabled
+    bar_heights = task_test_accs + [0]*(len(task_test_sets) - len(selected_test_sets))
+    plt.bar(x = range(len(task_test_sets)), height=bar_heights, zorder=1)
+
+    plt.xticks(range(len(task_test_sets)), [','.join(task_classes.values()) for t, task_classes in task_metadata.items()], rotation='vertical')
+
+    plt.axhline(avg_task_test_acc, c=[0.4]*3, linestyle=':')
+    plt.text(0, avg_task_test_acc+0.002, f'{model_name} (average)', c=[0.4]*3, size=8)
+
+    if prev_accs is not None:
+        for p, prev_acc_list in enumerate(prev_accs):
+            plt.bar(x = range(len(prev_acc_list)), height=prev_acc_list, fc='tab:red', zorder=0, alpha=0.5*((p+1)/len(prev_accs)))
+
+    plt.ylim([0, 1])
+    #plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+    # Save figure to wandb
+    file_path = os.path.join(results_dir, f'taskwise_accuracy_task_{task_id}.png')
+    plt.savefig(file_path)
+    img = Image.open(file_path)
+    wandb.log({f'taskwise accuracy': wandb.Image(img), 'task': task_id})
+
+    plt.close()
+
+    avg_task_test_acc = np.mean(task_test_accs_prot)
+    print(f'\n +++ AVERAGE TASK TEST ACCURACY PROTOTYPES: {avg_task_test_acc:.2%} +++ ')
+
+    # Plot taskwise accuracy if enabled
+    bar_heights = task_test_accs_prot + [0]*(len(task_test_sets) - len(selected_test_sets))
+    plt.bar(x = range(len(task_test_sets)), height=bar_heights, zorder=1)
+
+    plt.xticks(range(len(task_test_sets)), [','.join(task_classes.values()) for t, task_classes in task_metadata.items()], rotation='vertical')
+
+    plt.axhline(avg_task_test_acc, c=[0.4]*3, linestyle=':')
+
+    for p, prev_acc_list in enumerate(prev_accs_prot):
+        plt.bar(x = range(len(prev_acc_list)), height=prev_acc_list, fc='tab:red', zorder=0, alpha=0.5*((p+1)/len(prev_accs)))
+
+    plt.ylim([0, 1])
+
+    # Save figure to wandb
+    file_path = os.path.join(results_dir, f'taskwise_accuracy_task_{task_id}_prot.png')
+    plt.savefig(file_path)
+    img = Image.open(file_path)
+    wandb.log({f'taskwise accuracy prototypes': wandb.Image(img), 'task': task_id})
+
+    plt.close()
+
+    return task_test_accs, task_test_accs_prot
 
 
 # Evaluate the model on the test sets of all tasks
