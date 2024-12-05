@@ -3,7 +3,7 @@ import torch
 import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch.utils as utils
-from torch.utils.data import TensorDataset, DataLoader, random_split, ConcatDataset
+from torch.utils.data import TensorDataset, DataLoader, random_split, ConcatDataset, Subset
 from torchvision import datasets, transforms
 #from tinyimagenet import TinyImageNet
 import pandas as pd
@@ -14,6 +14,10 @@ from PIL import Image
 import pdb
 from tqdm import tqdm
 import pdb
+import random
+import torch
+import random
+from torch.utils.data import Sampler
 
 torch.random.manual_seed(42)
 np.random.seed(42)
@@ -338,60 +342,59 @@ def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi
     # Return average loss and accuracy across all batches
     return np.mean(batch_val_losses), np.mean(batch_val_accs)
 
-
 def evaluate_model_prototypes(multitask_model: nn.Module,  # trained model capable of multi-task classification
-                     val_loader: utils.data.DataLoader,  # task-specific data to evaluate on
-                     loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
-                     device = device,
-                     prototypes = None,
-                     task_metadata = None,
-                     task_id = 0,
-                     prototypes_per_class = []
-                    ):
-     """
-     Evaluates the model on a validation dataset.
-    
-     Args:
-          multitask_model (nn.Module): The trained multitask model to evaluate.
-          val_loader (DataLoader): DataLoader for the validation dataset.
-          loss_fn (_Loss, optional): Loss function to calculate validation loss. Default is CrossEntropyLoss.
-    
-     Returns:
-          tuple: Average validation loss and accuracy across all batches.
-     """
-     with torch.no_grad():
-          batch_val_losses, batch_val_accs = [], []
-    
-          # Iterate over all batches in the validation DataLoader
-          for batch in val_loader:
-                vx, vy, task_ids = batch
-                vx, vy = vx.to(device), vy.to(device)
-                
-                vx = torch.concat([prototypes_per_class, vx], dim=0)
-                # print(vx.shape)
-                prototypes_idx = torch.arange(0, len(task_metadata[int(task_id)]), dtype=torch.int64)
-                
-                # y_no_prototypes = vy[prototypes_per_class.shape[0]:]
+                   val_loader: torch.utils.data.DataLoader,  # task-specific data to evaluate on
+                   prototypes: torch.Tensor,  # prototypes for the current task
+                   task_id: int,  # current task id
+                   loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
+                   device: torch.device = device
+                  ):
+    """
+    Evaluates the model on a validation dataset.
 
-    
-                # Forward pass with task-specific parameters
-                vpred = multitask_model(vx, prototypes_idx, task_id)
-    
-                # print(vpred.shape, y_no_prototypes.shape)
-                # Calculate loss and accuracy for the batch
-                val_loss = loss_fn(vpred, vy)
-                val_acc = get_batch_acc(vpred, vy)
-    
-                batch_val_losses.append(val_loss.item())
-                batch_val_accs.append(val_acc)
-    
-     # Return average loss and accuracy across all batches
-     return np.mean(batch_val_losses), np.mean(batch_val_accs)
+    Args:
+        multitask_model (nn.Module): The trained multitask model to evaluate.
+        val_loader (DataLoader): DataLoader for the validation dataset.
+        prototypes (torch.Tensor): Prototype images for the current task.
+        task_id (int): The current task ID.
+        loss_fn (_Loss, optional): Loss function to calculate validation loss. Default is CrossEntropyLoss.
+        device (torch.device, optional): Device to perform evaluation on. Default is the global 'device'.
+
+    Returns:
+        tuple: Average validation loss and accuracy across all batches.
+    """
+    multitask_model.eval()
+    with torch.no_grad():
+        batch_val_losses, batch_val_accs = [], []
+
+        # Iterate over all batches in the validation DataLoader
+        for batch in val_loader:
+            vx, vy, task_ids = batch
+            vx, vy = vx.to(device), vy.to(device)
+            current_task_id = task_ids[0].item()
+
+            # Ensure the task_id matches
+            if current_task_id != task_id:
+                raise ValueError(f"Expected task_id {task_id}, but got {current_task_id}")
+
+            # Forward pass with support set and prototypes
+            vpred = multitask_model(vx, prototypes, task_id)
+
+            # Calculate loss and accuracy for the batch
+            val_loss = loss_fn(vpred, vy)
+            val_acc = get_batch_acc(vpred, vy)
+
+            batch_val_losses.append(val_loss.item())
+            batch_val_accs.append(val_acc)
+
+    # Return average loss and accuracy across all batches
+    return np.mean(batch_val_losses), np.mean(batch_val_accs)
 
 # Evaluate the model on the test sets of all tasks
 def test_evaluate_prototypes(multitask_model: nn.Module, 
                   selected_test_sets,  
                   task_test_sets, 
+                  task_prototypes,  # Added argument
                   prev_accs = None,
                   show_taskwise_accuracy=True, 
                   baseline_taskwise_accs = None, 
@@ -399,20 +402,27 @@ def test_evaluate_prototypes(multitask_model: nn.Module,
                   verbose=False, 
                   batch_size=16,
                   results_dir="",
-                  task_id=0,
                   task_metadata=None,
-                  prototypes_per_class = {}
+                  task_id=0,
+                  loss_fn=nn.CrossEntropyLoss(),
                  ):
     """
     Evaluates the model on all selected test sets and optionally displays results.
+
     Args:
         multitask_model (nn.Module): The trained multitask model to evaluate.
         selected_test_sets (list[Dataset]): List of test datasets for each task.
+        task_test_sets (list[Dataset]): List of all test datasets for each task.
+        task_prototypes (dict[int, torch.Tensor]): Dictionary mapping task IDs to their prototypes.
         prev_accs (list[list[float]], optional): Previous accuracies for tracking forgetting.
         show_taskwise_accuracy (bool, optional): If True, plots a bar chart of taskwise accuracies.
         baseline_taskwise_accs (list[float], optional): Baseline accuracies for comparison.
         model_name (str, optional): Name of the model to show in plots. Default is ''.
         verbose (bool, optional): If True, prints detailed evaluation results. Default is False.
+        batch_size (int, optional): Batch size for evaluation.
+        results_dir (str, optional): Directory to save results plots.
+        task_metadata (dict[int, dict[int, str]], optional): Metadata for tasks and classes.
+
     Returns:
         list[float]: Taskwise accuracies for the selected test sets.
     """
@@ -425,19 +435,19 @@ def test_evaluate_prototypes(multitask_model: nn.Module,
     # Iterate over each task's test dataset
     for t, test_data in enumerate(selected_test_sets):
         # Create a DataLoader for the current task's test dataset
-        test_loader = utils.data.DataLoader(test_data,
-                                       batch_size=batch_size,
-                                       shuffle=True)
+        test_loader = DataLoader(test_data,
+                                 batch_size=batch_size,
+                                 shuffle=False)  # Typically, shuffle=False for evaluation
+
+        # Retrieve prototypes for the current task
+        prototypes = task_prototypes[t].to(device)
 
         # Evaluate the model on the current task
-        task_test_loss, task_test_acc = evaluate_model_prototypes(multitask_model, test_loader,
-                                                       device=device,
-                                                       task_metadata=task_metadata,
-                                                       task_id=task_id,
-                                                       prototypes_per_class=prototypes_per_class[t])
+        task_test_loss, task_test_acc = evaluate_model_prototypes(multitask_model, test_loader, prototypes, t, loss_fn, device=device)
 
         if verbose:
-            print(f'{task_metadata[t]}: {task_test_acc:.2%}')
+            class_names = [task_metadata[t][idx] for idx in range(len(task_metadata[t]))]
+            print(f'Task {t} ({", ".join(class_names)}): {task_test_acc:.2%}')
             if baseline_taskwise_accs is not None:
                 print(f'(Baseline: {baseline_taskwise_accs[t]:.2%})')
 
@@ -493,6 +503,7 @@ def test_evaluate_prototypes(multitask_model: nn.Module,
         plt.close()
 
     return task_test_accs
+
 
 
 
@@ -762,6 +773,57 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
     }
 
 
+class MinimumSubsetBatchSampler(Sampler):
+    def __init__(self, dataset, batch_size, task_classes, images_per_class):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.task_classes = task_classes
+        self.images_per_class = images_per_class
+
+        # print("Images per class:", self.images_per_class.keys())
+
+        for class_idx in self.task_classes:
+            if len(self.images_per_class[class_idx]) == 0:
+                raise ValueError(f"No samples found for class {class_idx}.")
+
+        self.class_to_indices = {
+            class_idx: self.images_per_class[class_idx].copy()
+            for class_idx in self.task_classes
+        }
+
+        for class_idx in self.task_classes:
+            random.shuffle(self.class_to_indices[class_idx])
+
+    def __iter__(self):
+        class_iterators = {class_idx: iter(indices) for class_idx, indices in self.class_to_indices.items()}
+
+        while True:
+            batch = []
+
+            try:
+                for class_idx in self.task_classes:
+                    batch.append(next(class_iterators[class_idx]))
+            except StopIteration:
+                break
+
+            remaining_batch_size = self.batch_size - len(batch)
+            if remaining_batch_size > 0:
+                all_class_indices = [idx for class_indices in self.class_to_indices.values() for idx in class_indices]
+                available_indices = list(set(all_class_indices) - set(batch))
+                if remaining_batch_size > len(available_indices):
+                    sampled = available_indices
+                else:
+                    sampled = random.sample(available_indices, remaining_batch_size)
+                batch += sampled
+
+            #print("Batch:", batch)
+            yield batch
+
+    def __len__(self):
+        min_class_len = min(len(indices) for indices in self.class_to_indices.values())
+        return min_class_len
+    
+    
 def setup_dataset_prototype(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, test_frac=0.1, batch_size=256):
     """
     Sets up dataset, dataloaders, and metadata for training and testing.
@@ -785,7 +847,9 @@ def setup_dataset_prototype(dataset_name, data_dir='./data', num_tasks=10, val_f
 
     # Dataset-specific settings
     if dataset_name == 'Split-MNIST':
-        dataset = datasets.MNIST(root=data_dir, train=True, download=True)
+        dataset_train = datasets.MNIST(root=data_dir, train=True, download=True)
+        dataset_test = datasets.MNIST(root=data_dir, train=False, download=True)
+        
         num_classes = 10
         preprocess = transforms.Compose([
             transforms.Grayscale(num_output_channels=3), # Convert to 3-channel grayscale
@@ -799,7 +863,10 @@ def setup_dataset_prototype(dataset_name, data_dir='./data', num_tasks=10, val_f
         }
 
     elif dataset_name == 'Split-CIFAR100':
-        dataset = datasets.CIFAR100(root=data_dir, train=True, download=True)
+        dataset_train = datasets.CIFAR100(root=data_dir, train=True, download=True)
+        dataset_test = datasets.CIFAR100(root=data_dir, train=False, download=True)
+        
+        
         num_classes = 100
         preprocess = transforms.Compose([
             transforms.ToTensor(),
@@ -812,7 +879,7 @@ def setup_dataset_prototype(dataset_name, data_dir='./data', num_tasks=10, val_f
         }
 
     elif dataset_name == 'TinyImageNet':
-        dataset = datasets.ImageFolder(os.path.join(data_dir, 'tiny-imagenet-200', 'train'))
+        dataset_train = datasets.ImageFolder(os.path.join(data_dir, 'tiny-imagenet-200', 'train'))
         num_classes = 200
         preprocess = transforms.Compose([
             transforms.Resize((64, 64)),
@@ -827,101 +894,150 @@ def setup_dataset_prototype(dataset_name, data_dir='./data', num_tasks=10, val_f
 
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
+    
+    # Build a dictionary of training indices per class
+    train_images_per_class = {}
+    for class_idx in tqdm(range(num_classes), desc="Collecting training indices per class"):
+        if dataset_name in ['Split-MNIST', 'Split-CIFAR100']:
+            indices = [i for i, label in enumerate(dataset_train.targets) if label == class_idx]
+        elif dataset_name == 'TinyImageNet':
+            indices = [i for i, (_, label) in enumerate(dataset_train.samples) if label == class_idx]
+        train_images_per_class[class_idx] = indices  # Store indices instead of images
 
+    # Select one prototype image per class
+    train_prototype_image_per_class = {}
+    prototype_indices = set()
+    
+    for class_idx in range(num_classes):
+        if len(train_images_per_class[class_idx]) == 0:
+            raise ValueError(f"No training images found for class {class_idx} in dataset {dataset_name}.")
+        prototype_idx = random.choice(train_images_per_class[class_idx])
+        prototype_indices.add(prototype_idx)
 
-
+        # Load and preprocess the prototype image
+        if dataset_name == 'Split-MNIST':
+            # For MNIST, dataset_train[idx] returns (image, label)
+            img, _ = dataset_train[prototype_idx]
+            img = preprocess(img)
+        elif dataset_name == 'Split-CIFAR100':
+            img, _ = dataset_train[prototype_idx]
+            img = preprocess(img)
+        elif dataset_name == 'TinyImageNet':
+            img, _ = dataset_train[prototype_idx]
+            img = preprocess(img)
+        
+        train_prototype_image_per_class[class_idx] = img
+        
+        # Remove the prototype index from training indices to ensure disjointness
+        train_images_per_class[class_idx].remove(prototype_idx)
+        
     # Process tasks
-    images_per_class = {}
-    for class_idx in tqdm(range(num_classes)):
-        images_per_class[class_idx] = {}
-        images_per_class[class_idx]['indices'] = [i for i, label in enumerate(dataset.targets) if label == class_idx]
-        images_per_class[class_idx]['images']  = [preprocess(Image.fromarray(dataset.data[i])) for i in images_per_class[class_idx]['indices']]
-        
-        # images_per_class[class_idx]['images'] = []
-        # for i in images_per_class[class_idx]['indices']:
-        #     # print(i)
-        #     images_per_class[class_idx]['images'].append(preprocess(Image.fromarray(dataset.data[i])))
-            
-        images_per_class[class_idx]['labels']  = [label for i, label in enumerate(dataset.targets) if label == class_idx]
+    for t, task_classes in tqdm(timestep_task_classes.items(), desc="Processing tasks"):
+        if dataset_name == 'Split-MNIST':
+            # Exclude prototype indices
+            task_indices_train = [
+                i for i, label in enumerate(dataset_train.targets)
+                if label in task_classes and i not in prototype_indices
+            ]
+            task_images_train = [Image.fromarray(np.array(dataset_train.data[i]), mode='L') for i in task_indices_train]
+            task_labels_train = [label for i, label in enumerate(dataset_train.targets) if label in task_classes and i not in prototype_indices]
+            task_indices_test = [i for i, label in enumerate(dataset_test.targets) if label in task_classes]
+            task_images_test = [Image.fromarray(np.array(dataset_test.data[i]), mode='L') for i in task_indices_test]
+            task_labels_test = [label for i, label in enumerate(dataset_test.targets) if label in task_classes]
 
-    min_idx = len(images_per_class) // 10
+        elif dataset_name == 'Split-CIFAR100':
+            # Exclude prototype indices
+            task_indices_train = [
+                i for i, label in enumerate(dataset_train.targets)
+                if label in task_classes and i not in prototype_indices
+            ]
+            task_images_train = [Image.fromarray(dataset_train.data[i]) for i in task_indices_train]
+            task_labels_train = [label for i, label in enumerate(dataset_train.targets) if label in task_classes and i not in prototype_indices]
+            task_indices_test = [i for i, label in enumerate(dataset_test.targets) if label in task_classes]
+            task_images_test = [Image.fromarray(dataset_test.data[i]) for i in task_indices_test]
+            task_labels_test = [label for i, label in enumerate(dataset_test.targets) if label in task_classes]
 
-    for t, task_classes in timestep_task_classes.items():
-        class_to_idx = {orig: idx for idx, orig in enumerate(task_classes)}
-        
-        # Images for dataset 1:
-        task_images = [imgs for idx in task_classes for i, imgs in enumerate(images_per_class[idx]['images']) if i > min_idx]
-        task_labels = [labels for idx in task_classes for i, labels in enumerate(images_per_class[idx]['labels']) if i > min_idx]
-        
-        # Images for dataset 2:
-        # images_per_class_dataset2 = [{'images': imgs['images'], 'labels': [class_to_idx[int(label)] for label in imgs['labels']]}
-        #                              for idx in task_classes for i, imgs in enumerate(images_per_class[idx]) 
-        #                              if i <= min_idx]
-        
-        images_per_class_dataset2 = {}
-        for idx in task_classes:
-            images_per_class_dataset2[idx] = {}
-            images_per_class_dataset2[idx]['images'] = [imgs for i, imgs in enumerate(images_per_class[idx]['images']) if i <= min_idx]
-            images_per_class_dataset2[idx]['labels'] = [class_to_idx[int(label)] for i, label in enumerate(images_per_class[idx]['labels']) if i <= min_idx]
-        
+        elif dataset_name == 'TinyImageNet':
+            # Exclude prototype indices
+            task_indices_train = [
+                i for i, (_, label) in enumerate(dataset_train.samples)
+                if label in task_classes and i not in prototype_indices
+            ]
+            task_images_train = [dataset_train[i][0] for i in task_indices_train]
+            task_labels_train = [label for i, (_, label) in enumerate(dataset_train.samples) if label in task_classes and i not in prototype_indices]
+            task_indices_test = [i for i, (_, label) in enumerate(dataset_test.samples) if label in task_classes]
+            task_images_test = [dataset_test[i][0] for i in task_indices_test]
+            task_labels_test = [label for i, (_, label) in enumerate(dataset_test.samples) if label in task_classes]
+
         # Map old labels to 0-based labels for the task
-        task_labels = [class_to_idx[int(label)] for label in task_labels]
+        class_to_idx = {orig: idx for idx, orig in enumerate(task_classes)}
+        task_labels = [class_to_idx[int(label)] for label in task_labels_train]
+        task_labels_test = [class_to_idx[int(label)] for label in task_labels_test]
 
         # Create tensors
-        task_images_tensor = torch.stack(task_images)
-        task_labels_tensor = torch.tensor(task_labels, dtype=torch.long)
-        task_ids_tensor = torch.full((len(task_labels_tensor),), t, dtype=torch.long)
-
-        # TensorDataset
-        task_dataset = TensorDataset(task_images_tensor, task_labels_tensor, task_ids_tensor)
-
-        # Train/Validation/Test split
-        train_size = int((1 - val_frac - test_frac) * len(task_dataset))
-        val_size = int(val_frac * len(task_dataset))
-        test_size = len(task_dataset) - train_size - val_size
-        train_set, val_set, test_set = random_split(task_dataset, [train_size, val_size, test_size])
-
-        for dataset in (train_set, val_set, test_set):
-            #Set dataset attributes
-            dataset.classes = task_classes
-            dataset.class_to_idx = class_to_idx
-            dataset.task_id = t
-            dataset.num_classes = len(task_classes)
-
+        task_images_train_tensor = torch.stack([preprocess(img) for img in task_images_train])
+        task_labels_train_tensor = torch.tensor(task_labels, dtype=torch.long)
+        task_ids_train_tensor = torch.full((len(task_labels_train_tensor),), t, dtype=torch.long)
+        
+        # TensorDataset for training
+        task_dataset_train = TensorDataset(task_images_train_tensor, task_labels_train_tensor, task_ids_train_tensor)
+        
+        
+        # Train/Validation split
+        train_size = int((1 - val_frac) * len(task_dataset_train))
+        val_size = len(task_dataset_train) - train_size
+        train_set, val_set = random_split(task_dataset_train, [train_size, val_size])
+        
+        
+        # Prepare test set
+        task_images_test_tensor = torch.stack([preprocess(img) for img in task_images_test])
+        task_labels_test_tensor = torch.tensor(task_labels_test, dtype=torch.long)
+        task_ids_test_tensor = torch.full((len(task_labels_test_tensor),), t, dtype=torch.long)
+        
+        # TensorDataset for testing
+        test_set = TensorDataset(task_images_test_tensor, task_labels_test_tensor, task_ids_test_tensor)
+        
         # Store datasets and metadata
         timestep_tasks[t] = (train_set, val_set)
         task_test_sets.append(test_set)
-        if dataset_name == 'TinyImagenet':
+        if dataset_name == 'TinyImageNet':
             task_metadata[t] = {
-                idx: os.path.basename(dataset.classes[orig]) for orig, idx in class_to_idx.items()
+                idx: os.path.basename(dataset_train.classes[orig]) for orig, idx in class_to_idx.items()
             }
         else:
-            
-            # task_metadata[t] = {
-            #     idx: dataset.classes[orig] if hasattr(dataset, 'classes') else str(orig)
-            #     for orig, idx in class_to_idx.items()
-            # }
-            task_metadata[t] = {}
-            for orig, idx in class_to_idx.items():
-                # if hasattr(dataset, 'classes'):
-                #     print(f'orig: {orig} || idx: {idx} || class: {dataset.classes}')
-                #     task_metadata[t][idx] = dataset.classes[orig]
-                # else:
-                task_metadata[t][idx] = str(orig) 
+            task_metadata[t] = {
+                idx: dataset_train.classes[orig] if hasattr(dataset_train, 'classes') else str(orig)
+                for orig, idx in class_to_idx.items()
+            }
 
-
-    # Final datasets
+    # Final test data loader
     final_test_data = ConcatDataset(task_test_sets)
     final_test_loader = DataLoader(final_test_data, batch_size=batch_size, shuffle=True)
     print(f"Final test size (containing all tasks): {len(final_test_data)}")
+    
+    # Create a prototype loader
+    prototype_batch_size = num_classes // num_tasks
+    prototype_images_tensor = torch.stack([train_prototype_image_per_class[c] for c in range(num_classes)])
+    prototype_loader = DataLoader(prototype_images_tensor, batch_size=prototype_batch_size, shuffle=False)
+    print(f"Prototype loader size: {len(prototype_images_tensor)}")
+    
+    # Create a mapping from task_id to prototypes
+    task_prototypes = {
+        t: torch.stack([train_prototype_image_per_class[c] for c in timestep_task_classes[t]])
+        for t in range(num_tasks)
+    }
     
     return {
         'timestep_tasks': timestep_tasks,
         'final_test_loader': final_test_loader,
         'task_metadata': task_metadata,
         'task_test_sets': task_test_sets,
-        'images_per_class': images_per_class,
-        'classes_per_task': timestep_task_classes
+        'images_per_class': train_images_per_class,
+        'timestep_task_classes': timestep_task_classes,
+        'train_prototype_image_per_class': train_prototype_image_per_class,
+        'prototype_loader': prototype_loader,
+        'task_prototypes': task_prototypes,
+        'prototype_indices': prototype_indices
     }
 
 
@@ -997,3 +1113,159 @@ class logger:
     def log(self, message):
         self.logg.info(message)
         print(message)
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+#-----------------------------------------------------------------#
+#----------------------utils.py-----------------------------------#
+#-----------------------------------------------------------------#
+        
+        
+
+# Main block to test the setup_dataset_prototype function
+if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+
+    # Set random seeds for reproducibility
+    random.seed(42)
+    np.random.seed(42)
+    torch.manual_seed(42)
+
+    # Parameters for the setup
+    dataset_name = 'Split-CIFAR100'  # Change as needed: 'Split-MNIST', 'Split-CIFAR100', 'TinyImageNet'
+    data_dir = './data'              # Ensure this directory exists or change as needed
+    num_tasks = 10
+    val_frac = 0.1
+    test_frac = 0.1
+    batch_size = 256
+
+    # Setup the dataset
+    print("Setting up the dataset with prototypes...")
+    dataset_info = setup_dataset_prototype(
+        dataset_name=dataset_name,
+        data_dir=data_dir,
+        num_tasks=num_tasks,
+        val_frac=val_frac,
+        test_frac=test_frac,
+        batch_size=batch_size
+    )
+    print("Dataset setup completed.\n")
+
+    # Accessing the returned dictionary
+    timestep_tasks = dataset_info['timestep_tasks']
+    final_test_loader = dataset_info['final_test_loader']
+    task_metadata = dataset_info['task_metadata']
+    task_test_sets = dataset_info['task_test_sets']
+    images_per_class = dataset_info['images_per_class']
+    timestep_task_classes = dataset_info['timestep_task_classes']
+    train_prototypes = dataset_info['train_prototype_image_per_class']
+    prototype_loader = dataset_info['prototype_loader']
+    task_prototypes = dataset_info['task_prototypes']
+    prototype_indices = dataset_info['prototype_indices']
+
+    # Verify prototype_loader
+    print("Verifying prototype_loader...")
+    for batch_idx, batch in enumerate(prototype_loader):
+        print(f"Batch {batch_idx + 1}:")
+        print(f" - Batch shape: {batch.shape}")  # Expected: (prototype_batch_size, C, H, W)
+        # Optionally, visualize prototypes in the first batch
+        if batch_idx == 0:
+            num_prototypes = batch.size(0)
+            plt.figure(figsize=(num_prototypes * 2, 2))
+            for i in range(num_prototypes):
+                img = batch[i]
+                # Unnormalize the image for visualization
+                if dataset_name == 'Split-MNIST':
+                    img = img * 0.5 + 0.5  # Since it was normalized with mean=0.5, std=0.5
+                    img = img.squeeze().numpy()
+                    plt.subplot(1, num_prototypes, i + 1)
+                    plt.imshow(img, cmap='gray')
+                elif dataset_name in ['Split-CIFAR100', 'TinyImageNet']:
+                    # Adjust unnormalization based on dataset
+                    if dataset_name == 'Split-CIFAR100':
+                        mean = np.array([0.5, 0.5, 0.5])
+                        std = np.array([0.5, 0.5, 0.5])
+                    elif dataset_name == 'TinyImageNet':
+                        mean = np.array([0.485, 0.456, 0.406])
+                        std = np.array([0.229, 0.224, 0.225])
+                    img = img.permute(1, 2, 0).numpy()  # Convert from (C, H, W) to (H, W, C)
+                    img = (img * std + mean).clip(0, 1)  # Unnormalize and clip
+                    plt.subplot(1, num_prototypes, i + 1)
+                    plt.imshow(img)
+                plt.axis('off')
+            plt.suptitle("Prototypes Batch 1")
+            plt.show()
+    print("Prototype_loader verification completed.\n")
+
+    # Verify task_prototypes mapping
+    print("Verifying task_prototypes mapping...")
+    for t in range(num_tasks):
+        prototypes = task_prototypes[t]
+        print(f"Task {t}:")
+        print(f" - Number of prototypes: {prototypes.shape[0]}")
+        print(f" - Prototype shape: {prototypes.shape[1:]}")
+        # Optionally, visualize the first prototype of each task
+        if t < 1:  # Change or remove this condition to visualize more tasks
+            plt.figure(figsize=(2, 2))
+            img = prototypes[0]
+            if dataset_name == 'Split-MNIST':
+                img = img * 0.5 + 0.5
+                img = img.squeeze().numpy()
+                plt.imshow(img, cmap='gray')
+            elif dataset_name in ['Split-CIFAR100', 'TinyImageNet']:
+                if dataset_name == 'Split-CIFAR100':
+                    mean = np.array([0.5, 0.5, 0.5])
+                    std = np.array([0.5, 0.5, 0.5])
+                elif dataset_name == 'TinyImageNet':
+                    mean = np.array([0.485, 0.456, 0.406])
+                    std = np.array([0.229, 0.224, 0.225])
+                img = img.permute(1, 2, 0).numpy()  # Convert from (C, H, W) to (H, W, C)
+                img = (img * std + mean).clip(0, 1)  # Unnormalize and clip
+                plt.imshow(img)
+            plt.title(f"Task {t} Prototype")
+            plt.axis('off')
+            plt.show()
+    print("Task_prototypes mapping verification completed.\n")
+
+    # Optionally, verify that prototypes are excluded from training data
+    print("Verifying that prototypes are excluded from training data...")
+    all_train_indices = set()
+    for t, (train_set, val_set) in timestep_tasks.items():
+        # Extract the original indices from the train_set
+        # Note: random_split creates Subset objects with subset.indices
+        subset = train_set
+        if isinstance(subset, Subset):
+            subset_indices = subset.indices
+        else:
+            subset_indices = []
+        all_train_indices.update(subset_indices)
+
+    # Check that none of the prototype indices are in the training indices
+    intersection = all_train_indices.intersection(prototype_indices)
+    if len(intersection) == 0:
+        print("Success: No prototype indices found in the training data.")
+    else:
+        print(f"Error: Found {len(intersection)} prototype indices in the training data.")
+    print("Verification of prototype exclusion completed.\n")
+
+    # Summary of tasks and prototypes
+    print("Summary of tasks and prototypes:")
+    for t in range(num_tasks):
+        classes = timestep_task_classes[t]
+        num_classes_task = len(classes)
+        print(f"Task {t}: {num_classes_task} classes")
+        # Optionally, list class names or indices
+        class_names = [task_metadata[t][idx] for idx in range(num_classes_task)]
+        print(f" - Classes: {class_names}\n")
+
+    print("All verifications completed successfully.")

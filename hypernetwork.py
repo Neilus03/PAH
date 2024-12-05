@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models import resnet50
+from copy import deepcopy
 
 import numpy as np
 # import random
@@ -561,11 +562,7 @@ class HyperCMTL_prototype(nn.Module):
         self.img_size = img_size
         self.std = std
 
-        # Backbone
-        '''self.backbone = ConvBackbone(layers=backbone_layers,
-                                     input_size=(channels, img_size[0], img_size[1]),
-                                     device=device)
-        '''
+
         if backbone in backbone_dict:
             self.backbone = backbone_dict[self.backbone_name](device=device, pretrained=True)
         else: 
@@ -897,6 +894,167 @@ class HyperCMTL_prototype_attention(HyperCMTL):
         return new_model
 
 
+
+
+
+
+class HyperCMTL_seq_prototype_simple(nn.Module):
+    """
+    Hypernetwork-based Conditional Multi-Task Learning (HyperCMTL) model.
+
+    This model combines a convolutional backbone, a task-specific head, and a hypernetwork
+    to dynamically generate parameters for task-specific learning. It is designed for
+    applications requiring task conditioning, such as meta-learning or multi-task learning.
+
+    Args:
+        num_instances (int): Number of task instances to support (e.g., number of tasks).
+        device (str, optional): Device for computation ('cuda' or 'cpu'). Default is 'cuda'.
+        std (float, optional): Standard deviation for initializing the task embeddings. Default is 0.01.
+
+    Attributes:
+        num_instances (int): Number of task instances.
+        device (torch.device): Device for computation.
+        std (float): Standard deviation for embedding initialization.
+        backbone (ConvBackbone): Convolutional network for feature extraction.
+        task_head (TaskHead): Fully connected network for task-specific classification.
+        hypernet (HyperNetwork): Hypernetwork to generate parameters for the task head.
+        hyper_emb (nn.Embedding): Task-specific embeddings used as input to the hypernetwork.
+    """
+    def __init__(self,
+                 num_instances=1,
+                 backbone='resnet50',  # Backbone architecture
+                 task_head_projection_size=64,             # Task head hidden layer size
+                 task_head_num_classes=2,                  # Task head output size
+                 hyper_hidden_features=256,                # Hypernetwork hidden layer size
+                 hyper_hidden_layers=2,                    # Hypernetwork number of layers
+                 device='cuda',
+                 channels=1,
+                 img_size=[32, 32],
+                 std=0.01):
+        super().__init__()
+
+        self.num_instances = num_instances
+        self.backbone_name = backbone
+        self.task_head_projection_size = task_head_projection_size
+        self.task_head_num_classes = task_head_num_classes
+        self.hyper_hidden_features = hyper_hidden_features
+        self.hyper_hidden_layers = hyper_hidden_layers
+        self.device = device
+        self.channels = channels
+        self.img_size = img_size
+        self.std = std
+
+        # Backbone
+        '''self.backbone = ConvBackbone(layers=backbone_layers,
+                                     input_size=(channels, img_size[0], img_size[1]),
+                                     device=device)
+        '''
+        if backbone in backbone_dict:
+            self.backbone = backbone_dict[self.backbone_name](device=device, pretrained=True)
+        else: 
+            raise ValueError(f"Backbone {backbone} is not supported.")
+        
+        #Copy the backbone to be used for prototype extraction
+        self.backbone_prototype_frozen = deepcopy(self.backbone)
+        
+        # freeze the backbone for prototype extraction
+        for param in self.backbone_prototype_frozen.parameters():
+            param.requires_grad = False
+        
+        # freeze the backbone 
+        # for param in self.backbone.parameters():
+        #     param.requires_grad = False
+
+        # Task head
+        self.task_head = TaskHead_simple(input_size=self.backbone.num_features,
+                                  projection_size=task_head_projection_size,
+                                  num_classes=task_head_num_classes,
+                                  dropout=0.5,
+                                  device=device)
+
+        # Hypernetwork
+        self.backbone_emb_size = self.backbone.num_features
+        self.hyper_emb = nn.Embedding(self.num_instances, 4096)
+        nn.init.normal_(self.hyper_emb.weight, mean=0, std=std)
+        
+        self.hyper_emb_prototype = nn.Linear(self.backbone_emb_size, 1024)
+        nn.init.normal_(self.hyper_emb_prototype.weight, mean=0, std=std)
+        
+        self.hn_in = 5120 #4096
+        self.hypernet = HyperNetwork_seq(hyper_in_features=self.hn_in,
+                                     hyper_hidden_layers=6,
+                                     hyper_hidden_features=1024,
+                                     hypo_module=self.task_head,
+                                     activation='relu')
+
+            
+    def get_params(self, task_idx, prototypes_backbone_out):
+        # print("prototypes_backbone_out", prototypes_backbone_out.size())
+        # print('task_idx', task_idx.size())
+        
+        # Process task index through embedding
+        z = self.hyper_emb(torch.LongTensor([task_idx]).to(self.device))
+        # print("z", z.size())
+        
+        # Process prototypes through the linear layer
+        # prototypes_backbone_out shape: [num_prototypes, backbone_emb_size]
+        z_prototypes = self.hyper_emb_prototype(prototypes_backbone_out)  # Shape: [num_prototypes, 4096]
+        # print("z_prototypes", z_prototypes.size())
+        
+        # Aggregate prototype embeddings (e.g., mean)
+        z_prototypes = z_prototypes.mean(dim=0).unsqueeze(0)  # Shape: [1, 4096]
+        #print("z_prototypes after mean", z_prototypes.size())
+        
+        # Concatenate task embedding with prototype embedding
+        input_hyp = torch.cat((z, z_prototypes), dim=1)  # Shape: [1, 8192]
+        #print("input_hyp", input_hyp.size())
+        
+        return self.hypernet(input_hyp)
+    
+    
+    def forward(self, support_set, prototypes, task_idx, **kwargs):
+        # print("after get params", params)
+        backbone_out = self.backbone(support_set)
+        
+        prototypes_backbone_out = self.backbone_prototype_frozen(prototypes)
+        
+        # print("backbone_out", backbone_out.size())
+        params = self.get_params(task_idx, prototypes_backbone_out)
+        
+        
+        # print("backbone_out", backbone_out.size())
+        task_head_out = self.task_head(backbone_out, params=params)
+        
+        # print("task_head_out", task_head_out.size())
+        return task_head_out.squeeze(0)
+    
+    def deepcopy(self):
+        new_model = HyperCMTL_seq_prototype_simple(num_instances=self.num_instances,
+                    backbone=self.backbone_name,
+                    task_head_projection_size=self.task_head_projection_size,
+                    task_head_num_classes=self.task_head_num_classes,
+                    hyper_hidden_features=self.hyper_hidden_features,
+                    hyper_hidden_layers=self.hyper_hidden_layers,
+                    device=self.device,
+                    channels=self.channels,
+                    img_size=self.img_size, 
+                    std=self.std)
+        new_model.load_state_dict(self.state_dict())
+        return new_model.to(device=self.device)
+    
+    def get_optimizer_list(self):
+        # networks = [self.backbone, self.task_head, self.hypernet, self.hyper_emb]
+        optimizer_list = []
+        optimizer_list.append({'params': self.hyper_emb.parameters(), 'lr': 1e-3})
+        optimizer_list.append({'params': self.hyper_emb_prototype.parameters(), 'lr': 1e-3})
+        optimizer_list.extend(self.hypernet.get_optimizer_list())
+        optimizer_list.extend(self.backbone.get_optimizer_list())
+        optimizer_list.extend(self.task_head.get_optimizer_list())
+        # print("optimizer_list", optimizer_list)
+        return optimizer_list
+
+
+
 class TaskHead(MetaModule):
     def __init__(self, input_size: int, # number of features in the backbone's output
                  projection_size: int,  # number of neurons in the hidden layer
@@ -1019,3 +1177,7 @@ class Backbone(nn.Module):
 
 
     
+
+
+
+

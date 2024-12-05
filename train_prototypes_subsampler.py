@@ -32,7 +32,7 @@ from tqdm import tqdm
 import os
 
 # Functions from utils to help with training and evaluation
-from utils import inspect_batch, test_evaluate, test_evaluate_prototypes, training_plot, setup_dataset, inspect_task, distillation_output_loss, evaluate_model, evaluate_model_prototypes, get_batch_acc, logger
+from utils import MinimumSubsetBatchSampler,inspect_batch, test_evaluate, test_evaluate_prototypes, training_plot, setup_dataset, inspect_task, distillation_output_loss, evaluate_model, evaluate_model_prototypes, get_batch_acc, logger
 
 # Import the HyperCMTL model architecture
 from hypernetwork import HyperCMTL, HyperCMTL_prototype
@@ -60,7 +60,7 @@ torch.manual_seed(0)
 
 torch.cuda.empty_cache()
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
@@ -159,59 +159,8 @@ import random
 import torch
 from torch.utils.data import Sampler
 
-import torch
-import random
-from torch.utils.data import Sampler
 
-class MinimumSubsetBatchSampler(Sampler):
-    def __init__(self, dataset, batch_size, task_classes, images_per_class):
-        self.dataset = dataset
-        self.batch_size = batch_size
-        self.task_classes = task_classes
-        self.images_per_class = images_per_class
 
-        # print("Images per class:", self.images_per_class.keys())
-
-        for class_idx in self.task_classes:
-            if len(self.images_per_class[class_idx]) == 0:
-                raise ValueError(f"No samples found for class {class_idx}.")
-
-        self.class_to_indices = {
-            class_idx: self.images_per_class[class_idx].copy()
-            for class_idx in self.task_classes
-        }
-
-        for class_idx in self.task_classes:
-            random.shuffle(self.class_to_indices[class_idx])
-
-    def __iter__(self):
-        class_iterators = {class_idx: iter(indices) for class_idx, indices in self.class_to_indices.items()}
-
-        while True:
-            batch = []
-
-            try:
-                for class_idx in self.task_classes:
-                    batch.append(next(class_iterators[class_idx]))
-            except StopIteration:
-                break
-
-            remaining_batch_size = self.batch_size - len(batch)
-            if remaining_batch_size > 0:
-                all_class_indices = [idx for class_indices in self.class_to_indices.values() for idx in class_indices]
-                available_indices = list(set(all_class_indices) - set(batch))
-                if remaining_batch_size > len(available_indices):
-                    sampled = available_indices
-                else:
-                    sampled = random.sample(available_indices, remaining_batch_size)
-                batch += sampled
-
-            #print("Batch:", batch)
-            yield batch
-
-    def __len__(self):
-        min_class_len = min(len(indices) for indices in self.class_to_indices.values())
-        return min_class_len
     
     
 with wandb.init(project='HyperCMTL', name=f'HyperCMTL-{dataset}-{backbone}') as run:
