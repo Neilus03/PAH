@@ -35,7 +35,7 @@ import os
 from utils import inspect_batch, test_evaluate, training_plot, setup_dataset, inspect_task, distillation_output_loss, evaluate_model, get_batch_acc, logger, evaluate_model_2d, test_evaluate_2d
 
 # Import the HyperCMTL_seq model architecture
-from hypernetwork import HyperCMTL_seq, HyperCMTL_seq_simple_2d_color
+from hypernetwork import HyperCMTL_seq, HyperCMTL_seq_simple_2d_color, HyperCMTL_seq_simple_2d
 
 # Import the wandb library for logging metrics and visualizations
 import wandb
@@ -47,17 +47,25 @@ from copy import deepcopy # Deepcopy for copying models
 import time
 import logging
 import pdb
+import random
 
-torch.manual_seed(0)
+torch.manual_seed(42)
+np.random.seed(42)
+random.seed(42)
+torch.cuda.manual_seed_all(42)
+torch.cuda.manual_seed(42)
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 torch.cuda.empty_cache()
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
 TEST_FRAC = 0.1
-BATCH_SIZE = 128
+BATCH_SIZE = 256
 dataset = "Split-CIFAR100" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
 NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
 
@@ -67,8 +75,8 @@ lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
 stability = 3 #`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
-weight_hard_loss_prototypes = 1
-weight_soft_loss_prototypes = 1
+weight_hard_loss_prototypes = 0.2
+weight_soft_loss_prototypes = 0.05
 
 os.makedirs('results', exist_ok=True)
 # num = str(len(os.listdir('results/'))).zfill(3)
@@ -98,7 +106,7 @@ hyper_hidden_features = 256             # Larger hypernetwork hidden layer size
 hyper_hidden_layers = 4                 # Deeper hypernetwork
 
 # Initialize the model with the new configurations
-model = HyperCMTL_seq_simple_2d_color(
+model = HyperCMTL_seq_simple_2d(
     num_instances=len(task_metadata),
     backbone=backbone,
     task_head_projection_size=task_head_projection_size,
@@ -106,7 +114,7 @@ model = HyperCMTL_seq_simple_2d_color(
     hyper_hidden_features=hyper_hidden_features,
     hyper_hidden_layers=hyper_hidden_layers,
     device=device,
-    std=0.01
+    std=0.02
 ).to(device)
 
 # Log the model architecture and configuration

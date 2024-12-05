@@ -19,10 +19,16 @@ import torch
 import random
 from torch.utils.data import Sampler
 
-torch.random.manual_seed(42)
+
+torch.manual_seed(42)
 np.random.seed(42)
+random.seed(42)
+torch.cuda.manual_seed_all(42)
 torch.cuda.manual_seed(42)
-device = torch.device('cuda:2' if torch.cuda.is_available() else 'cpu')
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
+device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 def inspect_batch(images, labels=None, predictions=None, class_names=None, title=None,
                   center_title=True, max_to_show=16, num_cols=4, scale=1):
     """
@@ -345,7 +351,7 @@ def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi
 def evaluate_model_2d(multitask_model: nn.Module,  # trained model capable of multi-task classification
                    val_loader: utils.data.DataLoader,  # task-specific data to evaluate on
                    loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
-                   device = 'cuda',
+                   device = device, 
                    task_metadata = None,
                    task_id = 0,
                    wandb_run = None
@@ -369,7 +375,7 @@ def evaluate_model_2d(multitask_model: nn.Module,  # trained model capable of mu
         ax = ax.flatten()
         prototypes = multitask_model.get_prototypes(task_id)
         for i in range(len(task_metadata[int(task_id)])):
-            ax[i].imshow(prototypes[i].cpu().detach().numpy().reshape(3, 20, 20).transpose(1, 2, 0) * 255)
+            ax[i].imshow(prototypes[i].cpu().detach().numpy().reshape(1, 20, 20).transpose(1, 2, 0), cmap='gray')
             ax[i].axis('off')
         file_name = f'prototypes_{int(task_id)}_{wandb_run}.png'
         plt.savefig(file_name)
