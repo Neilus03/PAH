@@ -29,7 +29,7 @@ class ResNet50(nn.Module):
     def forward(self, x):
         # Pass through ResNet backbone
         x = self.feature_extractor(x)
-        print(x.shape)
+        # print(x.shape)
         # Global average pooling to get feature vector
         x = self.pool(x)
         x = x.view(x.size(0), -1)

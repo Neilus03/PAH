@@ -32,10 +32,10 @@ from tqdm import tqdm
 import os
 
 # Functions from utils to help with training and evaluation
-from utils import inspect_batch, test_evaluate, training_plot, setup_dataset, inspect_task, distillation_output_loss, evaluate_model, get_batch_acc, logger
+from utils import inspect_batch, test_evaluate, training_plot, setup_dataset, inspect_task, distillation_output_loss, evaluate_model, get_batch_acc, logger, evaluate_model_2d, test_evaluate_2d
 
 # Import the HyperCMTL_seq model architecture
-from hypernetwork import HyperCMTL_seq, HyperCMTL_seq_simple
+from hypernetwork import HyperCMTL_seq, HyperCMTL_seq_simple_2d_color
 
 # Import the wandb library for logging metrics and visualizations
 import wandb
@@ -66,7 +66,9 @@ EPOCHS_PER_TIMESTEP = 15
 lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
-stability = 3.5 #`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
+stability = 3 #`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
+weight_hard_loss_prototypes = 1
+weight_soft_loss_prototypes = 1
 
 os.makedirs('results', exist_ok=True)
 # num = str(len(os.listdir('results/'))).zfill(3)
@@ -96,7 +98,7 @@ hyper_hidden_features = 256             # Larger hypernetwork hidden layer size
 hyper_hidden_layers = 4                 # Deeper hypernetwork
 
 # Initialize the model with the new configurations
-model = HyperCMTL_seq_simple(
+model = HyperCMTL_seq_simple_2d_color(
     num_instances=len(task_metadata),
     backbone=backbone,
     task_head_projection_size=task_head_projection_size,
@@ -137,10 +139,18 @@ metrics = { 'train_losses': [],
           }
 
 prev_test_accs = []
+prev_test_accs_prot = []
 
 print("Starting training")
 
+config = {'EPOCHS_PER_TIMESTEP': EPOCHS_PER_TIMESTEP, 'lr': lr, 
+          'l2_reg': l2_reg, 'temperature': temperature, 'stability': stability, 
+          'weight_hard_loss_prototypes': weight_hard_loss_prototypes, 
+          'weight_soft_loss_prototypes': weight_soft_loss_prototypes, 
+          'backbone': backbone, 'color' : 'RGB'}
+
 with wandb.init(project='HyperCMTL', name=f'HyperCMTL_seq-learned_emb-{dataset}-{backbone}') as run:
+    wandb.config.update(config)
 
     # outer loop over each task, in sequence
     for t, (task_train, task_val) in timestep_tasks.items():
@@ -172,9 +182,11 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL_seq-learned_emb-{dataset}-
                 opt.zero_grad()
 
                 # get the predictions from the model
-                pred = model(x, task_id).squeeze(0)
-                # logger.log('pred shape', pred.shape, 'y shape', y.shape)
+                pred, pred_prototypes = model(x, task_id)
+                y_prototypes = torch.arange(len(task_metadata[int(task_id)]), device=device, dtype=torch.int64)
+                
                 hard_loss = loss_fn(pred, y)
+                prototypes_loss = loss_fn(pred_prototypes, y_prototypes)
 
                 #if previous model exists, calculate distillation loss
                 soft_loss = torch.tensor(0.0).to(device)
@@ -182,18 +194,21 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL_seq-learned_emb-{dataset}-
                     for old_task_id in range(t):
                         with torch.no_grad():
                     
-                            old_pred = previous_model(x, old_task_id)
-                        new_prev_pred = model(x, old_task_id)
+                            old_pred, old_pred_prot = previous_model(x, old_task_id)
+                        new_prev_pred, new_prev_pred_prot = model(x, old_task_id)
                         soft_loss += distillation_output_loss(new_prev_pred, old_pred, temperature).mean().to(device)
-                
-                total_loss = hard_loss + stability * soft_loss
+                        soft_loss += distillation_output_loss(new_prev_pred_prot, old_pred_prot, temperature).mean().to(device) * weight_soft_loss_prototypes
+
+                total_loss = hard_loss + stability * soft_loss + prototypes_loss * weight_hard_loss_prototypes
                 
                 total_loss.backward()
                 opt.step()
 
                 accuracy_batch = get_batch_acc(pred, y)
                 
-                wandb.log({'hard_loss': hard_loss.item(), 'soft_loss': (soft_loss*stability).item(), 'train_loss': total_loss.item(), 'epoch': e, 'task_id': t, 'batch_idx': batch_idx, 'train_accuracy': accuracy_batch})
+                wandb.log({'hard_loss': hard_loss.item(), 'soft_loss': (soft_loss*stability).item(), 
+                           'train_loss': total_loss.item(), 'prototype_loss': prototypes_loss.item(),
+                           'epoch': e, 'task_id': t, 'batch_idx': batch_idx, 'train_accuracy': accuracy_batch})
 
                 # track loss and accuracy:
                 epoch_train_losses.append(hard_loss.item())
@@ -206,9 +221,9 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL_seq-learned_emb-{dataset}-
                     progress_bar.set_description((f'E{e} batch loss:{hard_loss:.2f}, batch acc:{epoch_train_accs[-1]:>5.1%}'))
 
             # evaluate after each epoch on the current task's validation set:
-            avg_val_loss, avg_val_acc = evaluate_model(model, val_loader, loss_fn)
+            avg_val_loss, avg_val_acc, avg_val_loss_prot, avg_val_acc_prot = evaluate_model_2d(model, val_loader, loss_fn, device = device, task_metadata = task_metadata, task_id=t, wandb_run = run.id)
 
-            wandb.log({'val_loss': avg_val_loss, 'val_accuracy': avg_val_acc, 'epoch': e, 'task_id': t})
+            wandb.log({'val_loss': avg_val_loss, 'val_accuracy': avg_val_acc, 'epoch': e, 'task_id': t, 'val_prot_loss': avg_val_loss_prot, 'val_prot_accuracy': avg_val_acc_prot})
 
             ### update metrics:
             metrics['epoch_steps'].append(metrics['steps_trained'])
@@ -238,24 +253,27 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL_seq-learned_emb-{dataset}-
         metrics['best_val_acc'] = 0.0
         
         # evaluate on all tasks:
-        test_accs = test_evaluate(
-                            multitask_model=model, 
-                            selected_test_sets=task_test_sets[:t+1],  
-                            task_test_sets=task_test_sets, 
-                            prev_accs = prev_test_accs,
-                            show_taskwise_accuracy=True, 
-                            baseline_taskwise_accs = None, 
-                            model_name= 'HyperCMTL_seq + LwF', 
-                            verbose=True, 
-                            batch_size=BATCH_SIZE,
-                            results_dir=results_dir,
-                            task_id=t,
-                            task_metadata=task_metadata,
-                            )
+        test_accs, test_accs_prot = test_evaluate_2d(
+                                multitask_model=model, 
+                                selected_test_sets=task_test_sets[:t+1],  
+                                task_test_sets=task_test_sets, 
+                                prev_accs = prev_test_accs,
+                                prev_accs_prot = prev_test_accs_prot,
+                                show_taskwise_accuracy=True, 
+                                baseline_taskwise_accs = None, 
+                                model_name= 'HyperCMTL_seq + LwF', 
+                                verbose=True, 
+                                batch_size=BATCH_SIZE,
+                                results_dir=results_dir,
+                                task_id=t,
+                                task_metadata=task_metadata,
+                                wandb_run = run.id
+                                )
         
-        wandb.log({'mean_test_acc': np.mean(test_accs), 'task_id': t})
+        wandb.log({'mean_test_acc': np.mean(test_accs), 'task_id': t, 'mean_test_acc_prot': np.mean(test_accs_prot)})
 
         prev_test_accs.append(test_accs)
+        prev_test_accs_prot.append(test_accs_prot)
 
         #store the current model as the previous model
         previous_model = model.deepcopy()
