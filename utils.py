@@ -18,7 +18,7 @@ import pdb
 torch.random.manual_seed(42)
 np.random.seed(42)
 torch.cuda.manual_seed(42)
-
+device = torch.device('cuda:2' if torch.cuda.is_available() else 'cpu')
 def inspect_batch(images, labels=None, predictions=None, class_names=None, title=None,
                   center_title=True, max_to_show=16, num_cols=4, scale=1):
     """
@@ -304,7 +304,7 @@ def get_batch_acc(pred, y):
 def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi-task classification
                    val_loader: utils.data.DataLoader,  # task-specific data to evaluate on
                    loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
-                   device = 'cuda'
+                   device = device
                   ):
     """
     Evaluates the model on a validation dataset.
@@ -342,7 +342,7 @@ def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi
 def evaluate_model_prototypes(multitask_model: nn.Module,  # trained model capable of multi-task classification
                      val_loader: utils.data.DataLoader,  # task-specific data to evaluate on
                      loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
-                     device = 'cuda',
+                     device = device,
                      prototypes = None,
                      task_metadata = None,
                      task_id = 0,
@@ -431,7 +431,7 @@ def test_evaluate_prototypes(multitask_model: nn.Module,
 
         # Evaluate the model on the current task
         task_test_loss, task_test_acc = evaluate_model_prototypes(multitask_model, test_loader,
-                                                       device='cuda',
+                                                       device=device,
                                                        task_metadata=task_metadata,
                                                        task_id=task_id,
                                                        prototypes_per_class=prototypes_per_class[t])
