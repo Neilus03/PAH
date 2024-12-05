@@ -964,12 +964,10 @@ class HyperCMTL_seq_prototype_simple(nn.Module):
         self.backbone_prototype_frozen = deepcopy(self.backbone)
         
         # freeze the backbone for prototype extraction
-        #for param in self.backbone_prototype_frozen.parameters():
-        #    param.requires_grad = False
-        
-        # freeze the backbone 
-        # for param in self.backbone.parameters():
-        #     param.requires_grad = False
+        for param in self.backbone_prototype_frozen.parameters():
+           param.requires_grad = False
+            
+
 
         # Task head
         self.task_head = TaskHead_simple(input_size=self.backbone.num_features,
@@ -980,10 +978,13 @@ class HyperCMTL_seq_prototype_simple(nn.Module):
 
         # Hypernetwork
         self.backbone_emb_size = self.backbone.num_features
-        self.hyper_emb = nn.Embedding(self.num_instances, 4096)
+        self.hyper_emb = nn.Embedding(self.num_instances, 1024)
         nn.init.normal_(self.hyper_emb.weight, mean=0, std=std)
         
-        self.hyper_emb_prototype = nn.Linear(self.backbone_emb_size, 1024)
+    
+        
+        
+        self.hyper_emb_prototype = nn.Linear(self.backbone_emb_size, 4096)
         nn.init.normal_(self.hyper_emb_prototype.weight, mean=0, std=std)
         
         self.hn_in = 5120 #4096
