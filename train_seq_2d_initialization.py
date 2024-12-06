@@ -9,6 +9,8 @@ import torch.nn.functional as F
 # DataLoader for creating training and validation dataloaders
 from torch.utils.data import DataLoader
 
+from collections import OrderedDict
+
 # Torchvision for datasets and transformations
 from torchvision import models, datasets, transforms
 
@@ -33,6 +35,7 @@ import os
 
 # Functions from utils to help with training and evaluation
 from utils import inspect_batch, test_evaluate, training_plot, setup_dataset, inspect_task, distillation_output_loss, evaluate_model, get_batch_acc, logger, evaluate_model_2d, test_evaluate_2d
+from utils import *
 
 # Import the HyperCMTL_seq model architecture
 from hypernetwork import HyperCMTL_seq, HyperCMTL_seq_simple_2d
@@ -57,18 +60,19 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
 TEST_FRAC = 0.1
-BATCH_SIZE = 128
+BATCH_SIZE = 256
 dataset = "Split-CIFAR100" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
 NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
 
 ### training hyperparameters:
-EPOCHS_PER_TIMESTEP = 1000
+EPOCHS_PER_TIMESTEP = 15
 lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
 stability = 5 #`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
-weight_hard_loss_prototypes = 5
-weight_soft_loss_prototypes = 0.05
+weight_hard_loss_prototypes = 2
+weight_soft_loss_prototypes = 0.5
+weight_smoothness_loss = 0.1
 
 os.makedirs('results', exist_ok=True)
 # num = str(len(os.listdir('results/'))).zfill(3)
@@ -84,12 +88,27 @@ logger.log(f'Training hyperparameters: EPOCHS_PER_TIMESTEP={EPOCHS_PER_TIMESTEP}
 logger.log(f'Training on device: {device}')
 
 ### Define preprocessing transform and load a batch to inspect it:
-data = setup_dataset(dataset, data_dir='./data', num_tasks=NUM_TASKS, val_frac=VAL_FRAC, test_frac=TEST_FRAC, batch_size=BATCH_SIZE)
+data = setup_dataset_prototype(
+    dataset_name=dataset, 
+    data_dir='./data', 
+    num_tasks=NUM_TASKS, 
+    val_frac=VAL_FRAC, 
+    test_frac=TEST_FRAC, 
+    batch_size=BATCH_SIZE
+)
 
+
+# Extract data components
 timestep_tasks = data['timestep_tasks']
 final_test_loader = data['final_test_loader']
 task_metadata = data['task_metadata']
 task_test_sets = data['task_test_sets']
+images_per_class = data['images_per_class']
+timestep_task_classes = data['timestep_task_classes']
+train_prototypes = data['train_prototype_image_per_class']
+prototype_loader = data['prototype_loader']
+task_prototypes = data['task_prototypes']
+prototype_indices = data['prototype_indices']
 
 # More complex model configuration
 backbone = 'resnet50'                  # ResNet50 backbone. others: ['mobilenetv2', 'efficientnetb0', 'vit'] #vit not yet working
@@ -108,6 +127,24 @@ model = HyperCMTL_seq_simple_2d(
     device=device,
     std=0.01
 ).to(device)
+
+print(task_prototypes[0].shape)
+print(task_metadata[0])
+
+prototypes_inititalization = torch.zeros((10, 4000))
+fig, ax = plt.subplots(len(task_metadata), len(task_metadata[0]), figsize=(len(task_metadata[0])*3, (len(task_metadata))*3))
+for t in range(len(task_metadata)):
+    prototypes = torch.mean(task_prototypes[t][:, :, 6:26, 6:26], dim=1, keepdim=True)
+    prototypes_inititalization[t] = prototypes.reshape(-1)
+
+    for i in range(len(task_metadata[t])):
+        ax[t][i].imshow(prototypes[i].permute(1, 2, 0), cmap='gray')
+        ax[t][i].axis('off')
+        ax[t][i].set_title(task_metadata[t][i])
+
+plt.savefig(results_dir + '/prototypes.png')
+plt.close()
+model.initialize_embeddings(prototypes_inititalization.to(device))
 
 # Log the model architecture and configuration
 logger.log(f'Model architecture: {model}')
@@ -165,7 +202,8 @@ config = {'EPOCHS_PER_TIMESTEP': EPOCHS_PER_TIMESTEP, 'lr': lr,
 
 with wandb.init(project='HyperCMTL', name=f'HyperCMTL_seq-learned_emb-{dataset}-{backbone}') as run:
     wandb.config.update(config)
-    # wandb.watch(model, log='all', log_freq=100)
+    wandb.watch(model, log='all', log_freq=100)
+    wandb.log({"all prototypes": wandb.Image(results_dir + '/prototypes.png')})
 
     # outer loop over each task, in sequence
     for t, (task_train, task_val) in timestep_tasks.items():
@@ -179,6 +217,8 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL_seq-learned_emb-{dataset}-
                                         batch_size=BATCH_SIZE,
                                         shuffle=True)
                                         for data in (task_train, task_val)]
+
+        avg_val_loss, avg_val_acc, avg_val_loss_prot, avg_val_acc_prot = evaluate_model_2d(model, val_loader, loss_fn, device = device, task_metadata = task_metadata, task_id=t, wandb_run = run.id)
 
         # inner loop over the current task:
         for e in range(EPOCHS_PER_TIMESTEP):
@@ -234,7 +274,7 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL_seq-learned_emb-{dataset}-
                 prototypes_loss = loss_fn(pred_prototypes, y_prototypes)
                 
                 # print(prototypes.shape)
-                smoothness_loss = tv_loss_fn(prototypes)
+                smoothness_loss = tv_loss_fn(prototypes) * weight_smoothness_loss
 
                 #if previous model exists, calculate distillation loss
                 soft_loss = torch.tensor(0.0).to(device)
@@ -247,15 +287,17 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL_seq-learned_emb-{dataset}-
                         soft_loss += distillation_output_loss(new_prev_pred, old_pred, temperature).mean().to(device)
                         soft_loss += distillation_output_loss(new_prev_pred_prot, old_pred_prot, temperature).mean().to(device) * weight_soft_loss_prototypes
 
-                total_loss = hard_loss + stability * soft_loss + prototypes_loss * weight_hard_loss_prototypes + smoothness_loss
+                total_loss = hard_loss + stability * soft_loss + prototypes_loss * weight_hard_loss_prototypes
                 
                 total_loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 opt.step()
 
                 accuracy_batch = get_batch_acc(pred, y)
                 
                 wandb.log({'hard_loss': hard_loss.item(), 'soft_loss': (soft_loss*stability).item(), 
                            'train_loss': total_loss.item(), 'prototype_loss': prototypes_loss.item(),
+                           'smoothness_loss': smoothness_loss.item(),
                            'epoch': e, 'task_id': t, 'batch_idx': batch_idx, 'train_accuracy': accuracy_batch})
 
                 # track loss and accuracy:
@@ -320,9 +362,8 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL_seq-learned_emb-{dataset}-
                                 )
         
         wandb.log({'mean_test_acc': np.mean(test_accs), 'task_id': t, 'mean_test_acc_prot': np.mean(test_accs_prot)})
-        torch.save(model.state_dict(), results_dir + f'/model-t{t}-e{e}.pt')
-        exit(0)
 
+        torch.save(model.state_dict(), results_dir + f'/model-t{t}-e{e}.pt')
 
         prev_test_accs.append(test_accs)
         prev_test_accs_prot.append(test_accs_prot)

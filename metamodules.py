@@ -148,7 +148,7 @@ class FCBlock(MetaModule):
         self.first_layer_init = None
 
         # Set default nonlinearity and initialization
-        nl, nl_weight_init, first_layer_init = nn.ReLU(inplace=True), init_weights_normal, None
+        nl, nl_weight_init, first_layer_init = nn.LeakyReLU(inplace=True), init_weights_normal, None
 
         # Overwrite weight initialization if a custom function is provided
         if weight_init is not None:

@@ -369,7 +369,7 @@ def evaluate_model_2d(multitask_model: nn.Module,  # trained model capable of mu
         ax = ax.flatten()
         prototypes = multitask_model.get_prototypes(task_id)
         for i in range(len(task_metadata[int(task_id)])):
-            ax[i].imshow(prototypes[i].cpu().detach().numpy().reshape(3, 20, 20).transpose(1, 2, 0) * 255)
+            ax[i].imshow(prototypes[i].cpu().detach().numpy().reshape(1, 20, 20).transpose(1, 2, 0), cmap='gray')
             ax[i].axis('off')
         file_name = f'prototypes_{int(task_id)}_{wandb_run}.png'
         plt.savefig(file_name)
