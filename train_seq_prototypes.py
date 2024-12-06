@@ -51,12 +51,17 @@ import time
 import logging
 import pdb
 
-# Set random seeds for reproducibility
-torch.manual_seed(0)
 import random
-random.seed(42)
-np.random.seed(42)
 
+# Set random seeds for reproducibility
+torch.manual_seed(69)
+np.random.seed(69)
+random.seed(69)
+torch.cuda.manual_seed_all(69)
+torch.cuda.manual_seed(69)
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 # Clear CUDA cache
 torch.cuda.empty_cache()
 
@@ -121,7 +126,7 @@ prototype_indices = data['prototype_indices']
 backbone = 'resnet50'  # Options: ['mobilenetv2', 'efficientnetb0', 'vit'] (vit not yet working)
 task_head_projection_size = 512  # Even larger hidden layer in task head
 hyper_hidden_features = 256  # Larger hypernetwork hidden layer size
-hyper_hidden_layers = 6  # Deeper hypernetwork
+hyper_hidden_layers = 4  # Deeper hypernetwork
 freeze_backbone = False  # Freeze the backbone weights
 
 # Initialize the model with the new configurations
@@ -140,7 +145,7 @@ model = HyperCMTL_seq_prototype_simple(
 
 
 # Log the model architecture and configuration
-logger.log(f'Model architecture: {model}')
+#logger.log(f'Model architecture: {model}')
 logger.log(f"Model initialized with backbone_config={backbone}, task_head_projection_size={task_head_projection_size}, hyper_hidden_features={hyper_hidden_features}, hyper_hidden_layers={hyper_hidden_layers}")
 
 # Initialize the previous model

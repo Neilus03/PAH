@@ -16,12 +16,23 @@ from torchmeta.modules import MetaModule
 from copy import deepcopy
 
 from backbones import ResNet50, MobileNetV2, EfficientNetB0
+import random
+
+torch.manual_seed(69)
+np.random.seed(69)
+random.seed(69)
+torch.cuda.manual_seed_all(69)
+torch.cuda.manual_seed(69)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 backbone_dict = {
     'resnet50': ResNet50,
     'mobilenetv2': MobileNetV2,
     'efficientnetb0': EfficientNetB0
 }
+
+device = torch.device('cuda:2' if torch.cuda.is_available() else 'cpu')
 
 class HyperCMTL(nn.Module):
     """
@@ -52,7 +63,7 @@ class HyperCMTL(nn.Module):
                  task_head_num_classes=2,                  # Task head output size
                  hyper_hidden_features=256,                # Hypernetwork hidden layer size
                  hyper_hidden_layers=2,                    # Hypernetwork number of layers
-                 device='cuda',
+                 device=device,
                  channels=1,
                  img_size=[32, 32],
                  std=0.01):
@@ -169,7 +180,7 @@ class HyperCMTL_all(nn.Module):
                  task_head_num_classes=2,                  # Task head output size
                  hyper_hidden_features=256,                # Hypernetwork hidden layer size
                  hyper_hidden_layers=2,                    # Hypernetwork number of layers
-                 device='cuda',
+                 device=device,
                  channels=1,
                  img_size=[32, 32],
                  std=0.01):
@@ -300,7 +311,7 @@ class HyperCMTL_seq(nn.Module):
                  task_head_num_classes=2,                  # Task head output size
                  hyper_hidden_features=256,                # Hypernetwork hidden layer size
                  hyper_hidden_layers=2,                    # Hypernetwork number of layers
-                 device='cuda',
+                 device=device,
                  channels=1,
                  img_size=[32, 32],
                  std=0.01):
@@ -430,7 +441,7 @@ class HyperCMTL_seq_simple(nn.Module):
                  task_head_num_classes=2,                  # Task head output size
                  hyper_hidden_features=256,                # Hypernetwork hidden layer size
                  hyper_hidden_layers=2,                    # Hypernetwork number of layers
-                 device='cuda',
+                 device=device,
                  channels=1,
                  img_size=[32, 32],
                  std=0.01):
@@ -567,10 +578,10 @@ class HyperCMTL_seq_simple_2d(nn.Module):
                  task_head_num_classes=2,                  # Task head output size
                  hyper_hidden_features=256,                # Hypernetwork hidden layer size
                  hyper_hidden_layers=2,                    # Hypernetwork number of layers
-                 device='cuda',
+                 device=device,
                  channels=1,
                  img_size=[32, 32],
-                 std=0.01):
+                 std=0.02):
         super().__init__()
 
         self.num_instances = num_instances
@@ -726,7 +737,7 @@ class HyperCMTL_seq_simple_2d_color(nn.Module):
                  task_head_num_classes=2,                  # Task head output size
                  hyper_hidden_features=256,                # Hypernetwork hidden layer size
                  hyper_hidden_layers=2,                    # Hypernetwork number of layers
-                 device='cuda',
+                 device=device,
                  channels=1,
                  img_size=[32, 32],
                  std=0.01):
@@ -851,7 +862,7 @@ class HyperCMTL_prototype(nn.Module):
                  task_head_num_classes=2,                  # Task head output size
                  hyper_hidden_features=256,                # Hypernetwork hidden layer size
                  hyper_hidden_layers=2,                    # Hypernetwork number of layers
-                 device='cuda',
+                 device=device,
                  channels=1,
                  img_size=[32, 32],
                  std=0.01):
@@ -943,7 +954,7 @@ class HyperCMTL_prototype(nn.Module):
         # print("optimizer_list", optimizer_list)
         return optimizer_list
     
-    def deepcopy(self, device='cuda'):
+    def deepcopy(self, device=device):
         new_model = HyperCMTL_prototype(num_instances=self.num_instances,
                     backbone=self.backbone_name,
                     task_head_projection_size=self.task_head_projection_size,
@@ -965,7 +976,7 @@ class HyperCMTL_prototype_attention_old(HyperCMTL):
                  task_head_num_classes=2,                  # Task head output size
                  hyper_hidden_features=256,                # Hypernetwork hidden layer size
                  hyper_hidden_layers=2,                    # Hypernetwork number of layers
-                 device='cuda',
+                 device=device,
                  channels=1,
                  img_size=[32, 32],
                  std=0.01):
@@ -1056,7 +1067,7 @@ class HyperCMTL_prototype_attention_old(HyperCMTL):
         # print("optimizer_list", optimizer_list)
         return optimizer_list
 
-    def deepcopy(self, device='cuda'):
+    def deepcopy(self, device=device):
         new_model = HyperCMTL_prototype_attention_old(num_instances=self.num_instances,
                     backbone=self.backbone_name,
                     task_head_projection_size=self.task_head_projection_size,
@@ -1078,7 +1089,7 @@ class HyperCMTL_prototype_attention(HyperCMTL):
                  task_head_num_classes=2,                  # Task head output size
                  hyper_hidden_features=256,                # Hypernetwork hidden layer size
                  hyper_hidden_layers=2,                    # Hypernetwork number of layers
-                 device='cuda',
+                 device=device,
                  channels=1,
                  img_size=[32, 32],
                  std=0.01):
@@ -1185,7 +1196,7 @@ class HyperCMTL_prototype_attention(HyperCMTL):
         # print("optimizer_list", optimizer_list)
         return optimizer_list
 
-    def deepcopy(self, device='cuda'):
+    def deepcopy(self, device=device):
         new_model = HyperCMTL_prototype_attention(num_instances=self.num_instances,
                     backbone=self.backbone_name,
                     task_head_projection_size=self.task_head_projection_size,
@@ -1234,7 +1245,7 @@ class HyperCMTL_seq_prototype_simple(nn.Module):
                  task_head_num_classes=2,                  # Task head output size
                  hyper_hidden_features=256,                # Hypernetwork hidden layer size
                  hyper_hidden_layers=2,                    # Hypernetwork number of layers
-                 device='cuda',
+                 device=device,
                  channels=1,
                  img_size=[32, 32],
                  std=0.01):
@@ -1270,12 +1281,10 @@ class HyperCMTL_seq_prototype_simple(nn.Module):
         self.backbone_prototype_frozen = deepcopy(self.backbone)
         
         # freeze the backbone for prototype extraction
-        #for param in self.backbone_prototype_frozen.parameters():
-        #    param.requires_grad = False
-        
-        # freeze the backbone 
-        # for param in self.backbone.parameters():
-        #     param.requires_grad = False
+        for param in self.backbone_prototype_frozen.parameters():
+           param.requires_grad = False
+            
+
 
         # Task head
         self.task_head = TaskHead_simple(input_size=self.backbone.num_features,
@@ -1286,10 +1295,13 @@ class HyperCMTL_seq_prototype_simple(nn.Module):
 
         # Hypernetwork
         self.backbone_emb_size = self.backbone.num_features
-        self.hyper_emb = nn.Embedding(self.num_instances, 4096)
+        self.hyper_emb = nn.Embedding(self.num_instances, 1024)
         nn.init.normal_(self.hyper_emb.weight, mean=0, std=std)
         
-        self.hyper_emb_prototype = nn.Linear(self.backbone_emb_size, 1024)
+    
+        
+        
+        self.hyper_emb_prototype = nn.Linear(self.backbone_emb_size, 4096)
         nn.init.normal_(self.hyper_emb_prototype.weight, mean=0, std=std)
         
         self.hn_in = 5120 #4096
@@ -1372,7 +1384,7 @@ class TaskHead(MetaModule):
                  projection_size: int,  # number of neurons in the hidden layer
                  num_classes: int,      # number of output neurons
                  dropout: float=0.,     # optional dropout rate to apply
-                 device="cuda"):
+                 device=device):
         super().__init__()
 
         self.projection = BatchLinear(input_size, projection_size)
@@ -1409,7 +1421,7 @@ class TaskHead_simple(MetaModule):
                  projection_size: int,  # number of neurons in the hidden layer
                  num_classes: int,      # number of output neurons
                  dropout: float=0.,     # optional dropout rate to apply
-                 device="cuda"):
+                 device=device):
         super().__init__()
 
         self.input_size = input_size
@@ -1443,7 +1455,7 @@ from collections import OrderedDict
 import re
 import warnings
 class Backbone(nn.Module):
-    def __init__(self, backbone_name, device='cuda', pretrained=True):
+    def __init__(self, backbone_name, device=device, pretrained=True):
         super().__init__()
         self._children_modules_parameters_cache = dict()
 

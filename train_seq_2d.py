@@ -47,27 +47,35 @@ from copy import deepcopy # Deepcopy for copying models
 import time
 import logging
 import pdb
+import random
 
-torch.manual_seed(0)
+torch.manual_seed(69)
+np.random.seed(69)
+random.seed(69)
+torch.cuda.manual_seed_all(69)
+torch.cuda.manual_seed(69)
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 torch.cuda.empty_cache()
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
 TEST_FRAC = 0.1
-BATCH_SIZE = 128
-dataset = "Split-CIFAR100" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
+BATCH_SIZE = 256
+dataset = "Split-MNIST" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
 NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
 
 ### training hyperparameters:
-EPOCHS_PER_TIMESTEP = 1000
+EPOCHS_PER_TIMESTEP = 5
 lr     = 1e-4  # initial learning rate
 l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
 temperature = 2.0  # temperature scaling factor for distillation loss
-stability = 5 #`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
-weight_hard_loss_prototypes = 5
+stability = 3 #`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
+weight_hard_loss_prototypes = 0.2
 weight_soft_loss_prototypes = 0.05
 
 os.makedirs('results', exist_ok=True)
@@ -106,7 +114,7 @@ model = HyperCMTL_seq_simple_2d(
     hyper_hidden_features=hyper_hidden_features,
     hyper_hidden_layers=hyper_hidden_layers,
     device=device,
-    std=0.01
+    std=0.02
 ).to(device)
 
 # Log the model architecture and configuration

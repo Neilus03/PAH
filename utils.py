@@ -19,9 +19,15 @@ import torch
 import random
 from torch.utils.data import Sampler
 
-torch.random.manual_seed(42)
-np.random.seed(42)
-torch.cuda.manual_seed(42)
+
+torch.manual_seed(69)
+np.random.seed(69)
+random.seed(69)
+torch.cuda.manual_seed_all(69)
+torch.cuda.manual_seed(69)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
 device = torch.device('cuda:2' if torch.cuda.is_available() else 'cpu')
 def inspect_batch(images, labels=None, predictions=None, class_names=None, title=None,
                   center_title=True, max_to_show=16, num_cols=4, scale=1):
@@ -345,7 +351,7 @@ def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi
 def evaluate_model_2d(multitask_model: nn.Module,  # trained model capable of multi-task classification
                    val_loader: utils.data.DataLoader,  # task-specific data to evaluate on
                    loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
-                   device = 'cuda',
+                   device = device, 
                    task_metadata = None,
                    task_id = 0,
                    wandb_run = None
@@ -365,7 +371,7 @@ def evaluate_model_2d(multitask_model: nn.Module,  # trained model capable of mu
         batch_val_losses, batch_val_accs = [], []
         batch_val_losses_prototypes, batch_val_accs_prototypes = [], []
 
-        fig, ax = plt.subplots(len(task_metadata[int(task_id)]), 1, figsize=(10, 10))
+        '''fig, ax = plt.subplots(len(task_metadata[int(task_id)]), 1, figsize=(10, 10))
         ax = ax.flatten()
         prototypes = multitask_model.get_prototypes(task_id)
         for i in range(len(task_metadata[int(task_id)])):
@@ -374,7 +380,7 @@ def evaluate_model_2d(multitask_model: nn.Module,  # trained model capable of mu
         file_name = f'prototypes_{int(task_id)}_{wandb_run}.png'
         plt.savefig(file_name)
         wandb.log({f'prototypes_{int(task_id)}': wandb.Image(file_name), 'task': task_id})
-        plt.close()
+        plt.close()'''
 
         # Iterate over all batches in the validation DataLoader
         for batch in val_loader:
@@ -623,9 +629,26 @@ def test_evaluate_2d(multitask_model: nn.Module,
 
     # Calculate average test loss and accuracy across all tasks
     avg_task_test_acc = np.mean(task_test_accs)
-
+    
+    # # Calculate the forgetting metric
+    # if prev_accs is not None:
+    #     forgetting = [prev - acc for prev, acc in zip(prev_accs, task_test_accs)]
+    #     avg_forgetting = np.mean(forgetting)
+    #     print(f'Average forgetting: {avg_forgetting:.2})')
+        
+    # # Calculate the Forward Transfer metric
+    # if prev_accs is not None:
+    #     forward_transfer = [acc / prev for prev, acc in zip(prev_accs, task_test_accs)]
+    #     avg_forward_transfer = np.mean(forward_transfer)
+    #     print(f'Average forward transfer: {avg_forward_transfer:.2})')
+    
+    
     if verbose:
         print(f'\n +++ AVERAGE TASK TEST ACCURACY: {avg_task_test_acc:.2%} +++ ')
+    
+    # # Log the Forgetting and Backward Transfer metrics to wandb
+    # wandb.log({f'average forgetting': avg_forgetting, 'task': task_id})
+    # wandb.log({f'taskwise accuracy': avg_task_test_acc, 'task': task_id})
 
     # Plot taskwise accuracy if enabled
     bar_heights = task_test_accs + [0]*(len(task_test_sets) - len(selected_test_sets))
@@ -822,8 +845,6 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
     elif dataset_name == 'Split-CIFAR100':
         dataset_train = datasets.CIFAR100(root=data_dir, train=True, download=True)
         dataset_test = datasets.CIFAR100(root=data_dir, train=False, download=True)
-        
-        
         num_classes = 100
         preprocess = transforms.Compose([
             transforms.ToTensor(),
@@ -837,6 +858,7 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
 
     elif dataset_name == 'TinyImageNet':
         dataset_train = datasets.ImageFolder(os.path.join(data_dir, 'tiny-imagenet-200', 'train'))
+        dataset_test = datasets.ImageFolder(os.path.join(data_dir, 'tiny-imagenet-200', 'val'))
         num_classes = 200
         preprocess = transforms.Compose([
             transforms.Resize((64, 64)),
@@ -848,6 +870,7 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
             t: list(range(t * task_classes_per_task, (t + 1) * task_classes_per_task))
             for t in range(num_tasks)
         }
+
 
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
@@ -884,9 +907,6 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
             task_images_test = [dataset_test[i][0] for i in task_indices_test]
             task_labels_test = [label for i, (_, label) in enumerate(dataset_test.samples) if label in task_classes]
 
-    
-
-    
         
         # Map old labels to 0-based labels for the task
         class_to_idx = {orig: idx for idx, orig in enumerate(task_classes)}
@@ -1309,9 +1329,9 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     # Set random seeds for reproducibility
-    random.seed(42)
-    np.random.seed(42)
-    torch.manual_seed(42)
+    random.seed(69)
+    np.random.seed(69)
+    torch.manual_seed(69)
 
     # Parameters for the setup
     dataset_name = 'Split-CIFAR100'  # Change as needed: 'Split-MNIST', 'Split-CIFAR100', 'TinyImageNet'
