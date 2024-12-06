@@ -22,10 +22,10 @@ class Logger:
         self.logg.info(message)
         print(message)
 
-os.CUDA_VISIBLE_DEVICES = '4'
+os.environ["CUDA_VISIBLE_DEVICES"]="4"
 
 # Device setup
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:4" if torch.cuda.is_available() else "cpu")
 
 # Define the objective function for Optuna optimization
 def objective(trial):
@@ -40,7 +40,7 @@ def objective(trial):
     # Dataset and training setup
     dataset = "Split-CIFAR100"  # Set your dataset
     NUM_TASKS = 5 if dataset=='Split-MNIST' else 10  # Set the number of tasks
-    BATCH_SIZE = 256  # Set batch size
+    BATCH_SIZE = 128  # Set batch size
     EPOCHS_PER_TIMESTEP = 12  # Set number of epochs per timestep
     VAL_FRAC = 0.1
     TEST_FRAC = 0.1
@@ -260,17 +260,17 @@ def objective(trial):
 
 # Create the Optuna study
 study = optuna.create_study(direction='maximize')  # Maximize the validation accuracy
-study.optimize(objective, n_trials=1)  # Number of trials can be adjusted
+study.optimize(objective, n_trials=20)  # Number of trials can be adjusted
 
 # save figures and plot for the optuna study
-plot_optimization_history(study).write_image('results/optuna_study.png')
-plot_param_importances(study).write_image('results/optuna_params.png')
-plot_optimization_history(study).write_image('results/optuna_study.png')
+plot_optimization_history(study).write_image(results_dir + '/optuna_study.png')
+plot_param_importances(study).write_image(results_dir + '/optuna_params.png')
+plot_optimization_history(study).write_image(results_dir + '/optuna_study.png')
 
 plot_param_importances(study)
 
 # save the .npy file with the optimal hyperparameters found in the study 
-np.save('results/optuna_hyperparameters.npy', study.best_trial.params)
+np.save(results_dir + '/optuna_hyperparameters.npy', study.best_trial.params)
 study.best_trial.params["lr"]
 
 # Print the best hyperparameters
