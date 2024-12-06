@@ -66,7 +66,7 @@ torch.backends.cudnn.benchmark = False
 torch.cuda.empty_cache()
 
 # Determine device
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 
 
 ### Dataset hyperparameters:
@@ -145,7 +145,7 @@ model = HyperCMTL_seq_prototype_simple(
 
 
 # Log the model architecture and configuration
-logger.log(f'Model architecture: {model}')
+#logger.log(f'Model architecture: {model}')
 logger.log(f"Model initialized with backbone_config={backbone}, task_head_projection_size={task_head_projection_size}, hyper_hidden_features={hyper_hidden_features}, hyper_hidden_layers={hyper_hidden_layers}")
 
 # Initialize the previous model
