@@ -4,24 +4,35 @@ import torch
 from torch import utils
 import numpy as np
 from hypernetwork import HyperCMTL_seq_simple_2d
-from utils import setup_dataset, evaluate_model_2d, distillation_output_loss, get_batch_acc, logger, evaluate_model_2d, test_evaluate_2d, training_plot, evaluate_model_2d
+from utils import setup_dataset, evaluate_model_2d, distillation_output_loss, get_batch_acc, evaluate_model_2d, test_evaluate_2d, training_plot, evaluate_model_2d
 import wandb
 import time
 import os
-import tqdm
+from tqdm import tqdm
+import logging
 
+class Logger:
+    def __init__(self, results_dir):
+        logging.basicConfig(filename=os.path.join(results_dir, 'training.log'), 
+                            level=logging.INFO, 
+                            format='%(asctime)s - %(levelname)s - %(message)s')
+        self.logg = logging.getLogger()
+    
+    def log(self, message):
+        self.logg.info(message)
+        print(message)
 
 os.CUDA_VISIBLE_DEVICES = '4'
 
 # Device setup
-device = torch.device("cuda:5" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Define the objective function for Optuna optimization
 def objective(trial):
     # Sample hyperparameters from Optuna
-    lr = trial.suggest_loguniform('lr', 1e-5, 1e-3)  # Learning rate (log scale)
-    temperature = trial.suggest_uniform('temperature', 0.5, 3.0)  # Temperature for distillation loss
-    stability = trial.suggest_uniform('stability', 0.0, 5.0)  # Stability parameter for soft loss
+    lr = trial.suggest_float('lr', 1e-5, 1e-3, log=True)  # Learning rate (log scale)
+    temperature = trial.suggest_float('temperature', 0.5, 3.0)  # Temperature for distillation loss
+    stability = trial.suggest_float('stability', 0.0, 5.0)  # Stability parameter for soft loss
     task_head_projection_size = trial.suggest_int('task_head_projection_size', 128, 1024, step=128)  # Task head size
     hyper_hidden_features = trial.suggest_int('hyper_hidden_features', 128, 512, step=64)  # Hypernetwork hidden features
     hyper_hidden_layers = trial.suggest_int('hyper_hidden_layers', 2, 6)  # Hypernetwork layers
@@ -45,7 +56,7 @@ def objective(trial):
     os.makedirs(results_dir, exist_ok=True)
 
     # Initialize the logger
-    logger = logger(results_dir)
+    logger = Logger(results_dir)
 
     # Log initial information
     logger.log('Starting training...')
@@ -70,6 +81,13 @@ def objective(trial):
         device=device,
         std=0.02
     ).to(device)
+
+    # Log the model architecture and configuration
+    logger.log(f'Model architecture: {model}')
+    logger.log(f"Model initialized with backbone_config={backbone}, task_head_projection_size={task_head_projection_size}, hyper_hidden_features={hyper_hidden_features}, hyper_hidden_layers={hyper_hidden_layers}")
+    
+    # Initialize the previous model
+    previous_model = None
 
     # Initialize optimizer and loss function
     opt = torch.optim.AdamW(model.get_optimizer_list())
@@ -242,7 +260,7 @@ def objective(trial):
 
 # Create the Optuna study
 study = optuna.create_study(direction='maximize')  # Maximize the validation accuracy
-study.optimize(objective, n_trials=50)  # Number of trials can be adjusted
+study.optimize(objective, n_trials=1)  # Number of trials can be adjusted
 
 # save figures and plot for the optuna study
 plot_optimization_history(study).write_image('results/optuna_study.png')
