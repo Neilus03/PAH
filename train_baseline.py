@@ -48,7 +48,16 @@ import pdb
 import random
 from torch.utils.data import Sampler
 
-device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+torch.manual_seed(69)
+np.random.seed(69)
+random.seed(69)
+torch.cuda.manual_seed_all(69)
+torch.cuda.manual_seed(69)
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 ### as before, define a classification head that we can attach to the backbone:
 class TaskHead(nn.Module):
     def __init__(self, input_size: int, # number of features in the backbone's output
