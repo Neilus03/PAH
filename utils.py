@@ -28,7 +28,7 @@ torch.cuda.manual_seed(69)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-device = torch.device('cuda:3' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:4' if torch.cuda.is_available() else 'cpu')
 def inspect_batch(images, labels=None, predictions=None, class_names=None, title=None,
                   center_title=True, max_to_show=16, num_cols=4, scale=1):
     """
@@ -371,7 +371,7 @@ def evaluate_model_2d(multitask_model: nn.Module,  # trained model capable of mu
         batch_val_losses, batch_val_accs = [], []
         batch_val_losses_prototypes, batch_val_accs_prototypes = [], []
 
-        fig, ax = plt.subplots(len(task_metadata[int(task_id)]), 1, figsize=(10, 10))
+        '''fig, ax = plt.subplots(len(task_metadata[int(task_id)]), 1, figsize=(10, 10))
         ax = ax.flatten()
         prototypes = multitask_model.get_prototypes(task_id)
         for i in range(len(task_metadata[int(task_id)])):
@@ -380,7 +380,7 @@ def evaluate_model_2d(multitask_model: nn.Module,  # trained model capable of mu
         file_name = f'prototypes_{int(task_id)}_{wandb_run}.png'
         plt.savefig(file_name)
         wandb.log({f'prototypes_{int(task_id)}': wandb.Image(file_name), 'task': task_id})
-        plt.close()
+        plt.close()'''
 
         # Iterate over all batches in the validation DataLoader
         for batch in val_loader:
@@ -845,8 +845,6 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
     elif dataset_name == 'Split-CIFAR100':
         dataset_train = datasets.CIFAR100(root=data_dir, train=True, download=True)
         dataset_test = datasets.CIFAR100(root=data_dir, train=False, download=True)
-        
-        
         num_classes = 100
         preprocess = transforms.Compose([
             transforms.ToTensor(),
@@ -860,6 +858,7 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
 
     elif dataset_name == 'TinyImageNet':
         dataset_train = datasets.ImageFolder(os.path.join(data_dir, 'tiny-imagenet-200', 'train'))
+        dataset_test = datasets.ImageFolder(os.path.join(data_dir, 'tiny-imagenet-200', 'val'))
         num_classes = 200
         preprocess = transforms.Compose([
             transforms.Resize((64, 64)),
@@ -871,6 +870,7 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
             t: list(range(t * task_classes_per_task, (t + 1) * task_classes_per_task))
             for t in range(num_tasks)
         }
+
 
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
@@ -907,9 +907,6 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
             task_images_test = [dataset_test[i][0] for i in task_indices_test]
             task_labels_test = [label for i, (_, label) in enumerate(dataset_test.samples) if label in task_classes]
 
-    
-
-    
         
         # Map old labels to 0-based labels for the task
         class_to_idx = {orig: idx for idx, orig in enumerate(task_classes)}
