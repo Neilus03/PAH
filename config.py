@@ -52,10 +52,10 @@ logging_config = {
 # 6. Miscellaneous Parameters
 # ---------------------------
 misc_config = {
-    "device": "cuda:1",  # Device for training (use "cpu" if no GPU is available).
+    "device": "cuda:5",  # Device for training (use "cpu" if no GPU is available).
     "results_dir": "results",  # Directory to store results.
     "wandb_project": "HyperCMTL",  # The name of the WandB project to track experiments.
-    'random_seed': 49,  # Random seed for reproducibility.
+    'random_seed': 51,  # Random seed for reproducibility.
 }
 
 # 7. Evaluation Parameters
