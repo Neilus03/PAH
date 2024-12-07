@@ -209,7 +209,7 @@ config = {'EPOCHS_PER_TIMESTEP': EPOCHS_PER_TIMESTEP, 'lr': lr,
           'backbone': backbone, 'color' : 'RGB'}
 
 
-frozen_backbone = 'frozen' if model.frozen_backbone else 'unfrozen'
+frozen_backbone = 'frozen' if model.frozen_backbone else ''
 
 with wandb.init(project='HyperCMTL', name=f'HyperCMTL_seq-learned_emb-{dataset}-{backbone}{frozen_backbone}') as run:
     wandb.config.update(config)

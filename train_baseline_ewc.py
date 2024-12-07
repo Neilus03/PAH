@@ -111,7 +111,7 @@ l2_reg = 1e-6
 freeze_backbone = False
 
 # EWC hyperparameters:
-lambda_ewc = 200.0  # Adjust as needed for regularization strength
+lambda_ewc = 50.0  # Adjust as needed for regularization strength
 ewc_params = []    # Will store (params, fisher) after each task
 
 os.makedirs('results', exist_ok=True)
@@ -191,8 +191,7 @@ def count_optimizer_parameters(optimizer: torch.optim.Optimizer) -> None:
 
 
 def compute_fisher(model, data_loader, device, sample_size=2000):
-    # Compute the Fisher Information matrix for the parameters
-    # We'll do so by collecting gradients of the log-likelihood for samples.
+    # Compute the Fisher Information matrix for the parameters by collecting gradients of the log-likelihood for samples.
     model.eval()
     fisher = {n: torch.zeros_like(p, device=device) for n, p in model.named_parameters() if p.requires_grad}
 
@@ -225,8 +224,7 @@ def compute_fisher(model, data_loader, device, sample_size=2000):
     return fisher
 
 def ewc_loss(model, ewc_params, lambda_ewc):
-    # Add EWC penalty for all previously learned tasks
-    # ewc_params is a list of (old_params, fisher)
+    # Add EWC penalty for all previously learned tasks, ewc_params is a list of (old_params, fisher)
     loss = 0.0
     for old_params, fisher in ewc_params:
         for (n, p) in model.named_parameters():
