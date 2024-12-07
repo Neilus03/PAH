@@ -127,6 +127,7 @@ hyper_hidden_layers = 4                 # Deeper hypernetwork
 model = HyperCMTL_seq_simple_2d(
     num_instances=len(task_metadata),
     backbone=backbone,
+    frozen_backbone=config['model']['frozen_backbone'],
     task_head_projection_size=task_head_projection_size,
     task_head_num_classes=len(task_metadata[0]),
     hyper_hidden_features=hyper_hidden_features,
@@ -207,7 +208,8 @@ config = {'EPOCHS_PER_TIMESTEP': EPOCHS_PER_TIMESTEP, 'lr': lr,
           'weight_soft_loss_prototypes': weight_soft_loss_prototypes, 
           'backbone': backbone, 'color' : 'RGB'}
 
-frozen_backbone = 'frozen' if config['model_config']['frozen_backbone'] else ''
+
+frozen_backbone = 'frozen' if model.frozen_backbone else 'unfrozen'
 
 with wandb.init(project='HyperCMTL', name=f'HyperCMTL_seq-learned_emb-{dataset}-{backbone}{frozen_backbone}') as run:
     wandb.config.update(config)

@@ -570,6 +570,7 @@ class HyperCMTL_seq_simple_2d(nn.Module):
     def __init__(self,
                  num_instances=1,
                  backbone='resnet50',  # Backbone architecture
+                 frozen_backbone=config['model']['frozen_backbone'],  # Whether to freeze the backbone during training.
                  task_head_projection_size=64,             # Task head hidden layer size
                  task_head_num_classes=2,                  # Task head output size
                  hyper_hidden_features=256,                # Hypernetwork hidden layer size
@@ -582,6 +583,7 @@ class HyperCMTL_seq_simple_2d(nn.Module):
 
         self.num_instances = num_instances
         self.backbone_name = backbone
+        self.frozen_backbone = frozen_backbone
         self.task_head_projection_size = task_head_projection_size
         self.task_head_num_classes = task_head_num_classes
         self.hyper_hidden_features = hyper_hidden_features
@@ -601,7 +603,7 @@ class HyperCMTL_seq_simple_2d(nn.Module):
         else: 
             raise ValueError(f"Backbone {backbone} is not supported.")
         
-        if config['model']['frozen_backbone'] == True:
+        if self.frozen_backbone:
             for param in self.backbone.parameters():
                 param.requires_grad = False
         else:
