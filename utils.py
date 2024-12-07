@@ -18,17 +18,12 @@ import random
 import torch
 import random
 from torch.utils.data import Sampler
-from config import config
+# from configs.config import config
+import time
+import os
+from easydict import EasyDict 
 
-torch.manual_seed(69)
-np.random.seed(69)
-random.seed(69)
-torch.cuda.manual_seed_all(69)
-torch.cuda.manual_seed(69)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
 
-device = torch.device(config['misc']['device'] if torch.cuda.is_available() else 'cpu')
 def inspect_batch(images, labels=None, predictions=None, class_names=None, title=None,
                   center_title=True, max_to_show=16, num_cols=4, scale=1):
     """
@@ -314,7 +309,7 @@ def get_batch_acc(pred, y):
 def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi-task classification
                    val_loader: utils.data.DataLoader,  # task-specific data to evaluate on
                    loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
-                   device = device
+                   device = None
                   ):
     """
     Evaluates the model on a validation dataset.
@@ -334,7 +329,7 @@ def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi
         for batch in val_loader:
             vx, vy, task_ids = batch
             vx, vy = vx.to(device), vy.to(device)
-
+        
             # Forward pass with task-specific parameters
             vpred = multitask_model(vx, task_ids[0])
 
@@ -348,10 +343,53 @@ def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi
     # Return average loss and accuracy across all batches
     return np.mean(batch_val_losses), np.mean(batch_val_accs)
 
+def evaluate_model_timed(multitask_model: nn.Module,  # trained model capable of multi-task classification
+                   val_loader: utils.data.DataLoader,  # task-specific data to evaluate on
+                   loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
+                   device = None
+                  ):
+    """
+    Evaluates the model on a validation dataset.
+
+    Args:
+        multitask_model (nn.Module): The trained multitask model to evaluate.
+        val_loader (DataLoader): DataLoader for the validation dataset.
+        loss_fn (_Loss, optional): Loss function to calculate validation loss. Default is CrossEntropyLoss.
+
+    Returns:
+        tuple: Average validation loss and accuracy across all batches.
+    """
+    multitask_model.eval()
+    with torch.no_grad():
+        batch_val_losses, batch_val_accs = [], []
+
+        time_inf = []
+        # Iterate over all batches in the validation DataLoader
+        for batch in val_loader:
+            vx, vy, task_ids = batch
+            vx, vy, task_ids = vx.to(device), vy.to(device), task_ids.to(device)
+
+            start_time = time.time()
+            
+            # Forward pass with task-specific parameters
+            vpred = multitask_model(vx, task_ids[0])
+            time_inf.append(time.time() - start_time)
+
+            # Calculate loss and accuracy for the batch
+            val_loss = loss_fn(vpred, vy)
+            val_acc = get_batch_acc(vpred, vy)
+
+            batch_val_losses.append(val_loss.item())
+            batch_val_accs.append(val_acc)
+
+    # Return average loss and accuracy across all batches
+    multitask_model.train()
+    return np.mean(batch_val_losses), np.mean(batch_val_accs), np.mean(time_inf)
+
 def evaluate_model_2d(multitask_model: nn.Module,  # trained model capable of multi-task classification
                    val_loader: utils.data.DataLoader,  # task-specific data to evaluate on
                    loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
-                   device = device, 
+                   device = None, 
                    task_metadata = None,
                    task_id = 0,
                    wandb_run = None
@@ -413,7 +451,7 @@ def evaluate_model_prototypes(multitask_model: nn.Module,  # trained model capab
                    prototypes: torch.Tensor,  # prototypes for the current task
                    task_id: int,  # current task id
                    loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
-                   device: torch.device = device
+                   device: torch.device = None
                   ):
     """
     Evaluates the model on a validation dataset.
@@ -471,6 +509,7 @@ def test_evaluate_prototypes(multitask_model: nn.Module,
                   task_metadata=None,
                   task_id=0,
                   loss_fn=nn.CrossEntropyLoss(),
+                  device=None
                  ):
     """
     Evaluates the model on all selected test sets and optionally displays results.
@@ -701,6 +740,35 @@ def test_evaluate_2d(multitask_model: nn.Module,
     return task_test_accs, task_test_accs_prot
 
 
+def compute_FM_BWT(task_test_accs, prev_accs):
+    """
+    Computes the Forgetting Measure (FM) and Backward Transfer (BWT) metrics.
+
+    FM is the average difference between the max accuracy on each task and the current accuracy.
+    BWT is the average difference between the prev accuracy and the current accuracy. 
+
+    Args:
+        task_test_accs (list[float]): Taskwise accuracies for the selected test sets.
+        prev_accs (list[list[float]]): Previous accuracies for tracking forgetting.
+
+    Returns:
+        tuple: Average forgetting and backward transfer across all tasks.
+    """
+    # Calculate the forgetting metric
+    acc_per_task = []
+    for prev_acc in prev_accs:
+        acc_per_task.append([])
+        for i, acc in enumerate(prev_acc):
+            acc_per_task[i].append(acc)
+    
+    forgetting = [max(accs) - acc for accs, acc in zip(acc_per_task, task_test_accs)]
+    FM = np.mean(forgetting)
+    
+    # Calculate the Backward Transfer metric
+    backward_transfer = [acc - prev for prev, acc in zip(prev_accs[-1], task_test_accs)]
+    BWT = np.mean(backward_transfer)
+    
+    return FM, BWT
 
 # Evaluate the model on the test sets of all tasks
 def test_evaluate(multitask_model: nn.Module, 
@@ -757,8 +825,7 @@ def test_evaluate(multitask_model: nn.Module,
     avg_task_test_loss = np.mean(task_test_losses)
     avg_task_test_acc = np.mean(task_test_accs)
 
-    if verbose:
-        print(f'\n +++ AVERAGE TASK TEST ACCURACY: {avg_task_test_acc:.2%} +++ ')
+    print(f'\n +++ AVERAGE TASK TEST ACCURACY: {avg_task_test_acc:.2%} +++ ')
 
     # Plot taskwise accuracy if enabled
     if show_taskwise_accuracy:
@@ -802,6 +869,122 @@ def test_evaluate(multitask_model: nn.Module,
         plt.close()
 
     return task_test_accs
+
+# Evaluate the model on the test sets of all tasks
+def test_evaluate_metrics(multitask_model: nn.Module, 
+                  selected_test_sets,  
+                  task_test_sets, 
+                  prev_accs = None,
+                  show_taskwise_accuracy=True, 
+                  baseline_taskwise_accs = None, 
+                  model_name: str='', 
+                  verbose=False, 
+                  batch_size=16,
+                  results_dir="",
+                  task_id=0,
+                  task_metadata=None,
+                  device=None
+                 ):
+    """
+    Evaluates the model on all selected test sets and optionally displays results.
+    Args:
+        multitask_model (nn.Module): The trained multitask model to evaluate.
+        selected_test_sets (list[Dataset]): List of test datasets for each task.
+        prev_accs (list[list[float]], optional): Previous accuracies for tracking forgetting.
+        show_taskwise_accuracy (bool, optional): If True, plots a bar chart of taskwise accuracies.
+        baseline_taskwise_accs (list[float], optional): Baseline accuracies for comparison.
+        model_name (str, optional): Name of the model to show in plots. Default is ''.
+        verbose (bool, optional): If True, prints detailed evaluation results. Default is False.
+    Returns:
+        list[float]: Taskwise accuracies for the selected test sets.
+    """
+    metrics = {}
+    
+    print(f'{model_name} evaluation on test set of all tasks:'.capitalize())
+
+    task_test_losses = []
+    task_test_accs = []
+    task_test_times = []
+
+    # Iterate over each task's test dataset
+    for t, test_data in enumerate(selected_test_sets):
+        # Create a DataLoader for the current task's test dataset
+        test_loader = utils.data.DataLoader(test_data,
+                                       batch_size=batch_size,
+                                       shuffle=True)
+
+        # Evaluate the model on the current task
+        _, task_test_acc, time = evaluate_model_timed(multitask_model, test_loader, device=device)
+
+        print(f'{task_metadata[t]}: {task_test_acc:.2%} in {time:.2f} seconds')
+
+        task_test_accs.append(task_test_acc)
+        task_test_times.append(time)
+
+    # print(task_test_times)
+    metrics['task_test_accs'] = task_test_accs        
+    AA = np.mean(task_test_accs)
+    metrics['AA'] = AA
+    
+    if t > 0:
+        FM, BWT = compute_FM_BWT(task_test_accs, prev_accs)
+        metrics['FM'] = FM
+        metrics['BWT'] = BWT
+    else:
+        FM = 0
+        BWT = 0
+        metrics['FM'] = FM
+        metrics['BWT'] = BWT
+    
+    Num_params = sum(p.numel() for p in multitask_model.parameters())
+    Time_inf = np.mean(task_test_times)
+    metrics['Num_params'] = Num_params
+    metrics['Time_inf'] = Time_inf
+    
+    print(f'\n +++ AA: {AA:.2%}, FM: {FM:.2%}, BWT: {BWT:.2%}, Num_params: {Num_params}, Time_inf: {Time_inf:.2f} +++ ')
+
+    # Plot taskwise accuracy if enabled
+    if show_taskwise_accuracy:
+        bar_heights = task_test_accs + [0]*(len(task_test_sets) - len(selected_test_sets))
+        # display bar plot with accuracy on each evaluation task
+        plt.bar(x = range(len(task_test_sets)), height=bar_heights, zorder=1)
+
+        plt.xticks(
+        range(len(task_test_sets)),
+        [','.join(task_classes.values()) for t, task_classes in task_metadata.items()],
+        rotation='vertical'
+        )
+
+        plt.axhline(AA, c=[0.4]*3, linestyle=':')
+        plt.text(0, AA+0.002, f'{model_name} (average)', c=[0.4]*3, size=8)
+
+        if prev_accs is not None:
+            # plot the previous step's accuracies on top
+            # (will show forgetting in red)
+            for p, prev_acc_list in enumerate(prev_accs):
+                plt.bar(x = range(len(prev_acc_list)), height=prev_acc_list, fc='tab:red', zorder=0, alpha=0.5*((p+1)/len(prev_accs)))
+
+        if baseline_taskwise_accs is not None:
+            for t, acc in enumerate(baseline_taskwise_accs):
+                plt.plot([t-0.5, t+0.5], [acc, acc], c='black', linestyle='--')
+
+            # show average as well:
+            baseline_avg = np.mean(baseline_taskwise_accs)
+            plt.axhline(baseline_avg, c=[0.6]*3, linestyle=':')
+            plt.text(0, baseline_avg+0.002, 'baseline average', c=[0.6]*3, size=8)
+
+        plt.ylim([0, 1])
+        #plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+        # Save figure to wandb
+        file_path = os.path.join(results_dir, f'taskwise_accuracy_task_{task_id}.png')
+        plt.savefig(file_path)
+        img = Image.open(file_path)
+        wandb.log({f'taskwise accuracy': wandb.Image(img), 'task': task_id})
+
+        plt.close()
+
+    return metrics
 
 
 def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, test_frac=0.1, batch_size=256):
@@ -1309,13 +1492,56 @@ class logger:
         
         
         
+def seed_everything(seed=69):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.cuda.manual_seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.cuda.empty_cache()
         
+
+def _merge(d1: EasyDict, d2: EasyDict):
+	res = EasyDict(d1)
+	for key, value in d2.items():
+		if isinstance(value, EasyDict) and isinstance(res.get(key, None), EasyDict):
+			res[key] = _merge(res[key], value)
+		else: res[key] = value
+	return res
+
         
+def config_load(filename) -> EasyDict:
+	if filename.find('/') != -1:
+		__CONFIG_ROOTDIR__ = filename.split('/')[-2]
+	else: __CONFIG_ROOTDIR__ = ''
+	with open(filename, 'r') as f:
+		__CONTENT__ = f.read()
+	del filename, f
+	exec(__CONTENT__)
+	res = EasyDict(**locals())
+	res.pop('__CONTENT__')
+	res.pop('__CONFIG_ROOTDIR__')
+	if res.get('_base_', None) is not None:
+		bases = EasyDict()
+		for basename in list(res._base_):
+			base = config_load(os.path.join(__CONFIG_ROOTDIR__, basename))
+			bases = _merge(bases, base)
+		res = _merge(res, bases)
+	return res
         
-        
-        
-        
-        
+
+def setup_optimizer(model, lr, l2_reg, optimizer):
+    if optimizer == "Adam":
+        return torch.optim.Adam(model.parameters(), lr=lr, weight_decay=l2_reg)
+    elif optimizer == "SGD":
+        return torch.optim.SGD(model.parameters(), lr=lr, weight_decay=l2_reg)
+    elif optimizer == "AdamW":
+        return torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=l2_reg)
+    
         
         
 #-----------------------------------------------------------------#
@@ -1326,138 +1552,138 @@ class logger:
 
 # Main block to test the setup_dataset_prototype function
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
+    # import matplotlib.pyplot as plt
 
-    # Set random seeds for reproducibility
-    random.seed(69)
-    np.random.seed(69)
-    torch.manual_seed(69)
+    # # Set random seeds for reproducibility
+    # random.seed(69)
+    # np.random.seed(69)
+    # torch.manual_seed(69)
 
-    # Parameters for the setup
-    dataset_name = 'Split-CIFAR100'  # Change as needed: 'Split-MNIST', 'Split-CIFAR100', 'TinyImageNet'
-    data_dir = './data'              # Ensure this directory exists or change as needed
-    num_tasks = 10
-    val_frac = 0.1
-    test_frac = 0.1
-    batch_size = 256
+    # # Parameters for the setup
+    # dataset_name = 'Split-CIFAR100'  # Change as needed: 'Split-MNIST', 'Split-CIFAR100', 'TinyImageNet'
+    # data_dir = './data'              # Ensure this directory exists or change as needed
+    # num_tasks = 10
+    # val_frac = 0.1
+    # test_frac = 0.1
+    # batch_size = 256
 
-    # Setup the dataset
-    print("Setting up the dataset with prototypes...")
-    dataset_info = setup_dataset_prototype(
-        dataset_name=dataset_name,
-        data_dir=data_dir,
-        num_tasks=num_tasks,
-        val_frac=val_frac,
-        test_frac=test_frac,
-        batch_size=batch_size
-    )
-    print("Dataset setup completed.\n")
+    # # Setup the dataset
+    # print("Setting up the dataset with prototypes...")
+    # dataset_info = setup_dataset_prototype(
+    #     dataset_name=dataset_name,
+    #     data_dir=data_dir,
+    #     num_tasks=num_tasks,
+    #     val_frac=val_frac,
+    #     test_frac=test_frac,
+    #     batch_size=batch_size
+    # )
+    # print("Dataset setup completed.\n")
 
-    # Accessing the returned dictionary
-    timestep_tasks = dataset_info['timestep_tasks']
-    final_test_loader = dataset_info['final_test_loader']
-    task_metadata = dataset_info['task_metadata']
-    task_test_sets = dataset_info['task_test_sets']
-    images_per_class = dataset_info['images_per_class']
-    timestep_task_classes = dataset_info['timestep_task_classes']
-    train_prototypes = dataset_info['train_prototype_image_per_class']
-    prototype_loader = dataset_info['prototype_loader']
-    task_prototypes = dataset_info['task_prototypes']
-    prototype_indices = dataset_info['prototype_indices']
+    # # Accessing the returned dictionary
+    # timestep_tasks = dataset_info['timestep_tasks']
+    # final_test_loader = dataset_info['final_test_loader']
+    # task_metadata = dataset_info['task_metadata']
+    # task_test_sets = dataset_info['task_test_sets']
+    # images_per_class = dataset_info['images_per_class']
+    # timestep_task_classes = dataset_info['timestep_task_classes']
+    # train_prototypes = dataset_info['train_prototype_image_per_class']
+    # prototype_loader = dataset_info['prototype_loader']
+    # task_prototypes = dataset_info['task_prototypes']
+    # prototype_indices = dataset_info['prototype_indices']
 
-    # Verify prototype_loader
-    print("Verifying prototype_loader...")
-    for batch_idx, batch in enumerate(prototype_loader):
-        print(f"Batch {batch_idx + 1}:")
-        print(f" - Batch shape: {batch.shape}")  # Expected: (prototype_batch_size, C, H, W)
-        # Optionally, visualize prototypes in the first batch
-        if batch_idx == 0:
-            num_prototypes = batch.size(0)
-            plt.figure(figsize=(num_prototypes * 2, 2))
-            for i in range(num_prototypes):
-                img = batch[i]
-                # Unnormalize the image for visualization
-                if dataset_name == 'Split-MNIST':
-                    img = img * 0.5 + 0.5  # Since it was normalized with mean=0.5, std=0.5
-                    img = img.squeeze().numpy()
-                    plt.subplot(1, num_prototypes, i + 1)
-                    plt.imshow(img, cmap='gray')
-                elif dataset_name in ['Split-CIFAR100', 'TinyImageNet']:
-                    # Adjust unnormalization based on dataset
-                    if dataset_name == 'Split-CIFAR100':
-                        mean = np.array([0.5, 0.5, 0.5])
-                        std = np.array([0.5, 0.5, 0.5])
-                    elif dataset_name == 'TinyImageNet':
-                        mean = np.array([0.485, 0.456, 0.406])
-                        std = np.array([0.229, 0.224, 0.225])
-                    img = img.permute(1, 2, 0).numpy()  # Convert from (C, H, W) to (H, W, C)
-                    img = (img * std + mean).clip(0, 1)  # Unnormalize and clip
-                    plt.subplot(1, num_prototypes, i + 1)
-                    plt.imshow(img)
-                plt.axis('off')
-            plt.suptitle("Prototypes Batch 1")
-            plt.show()
-    print("Prototype_loader verification completed.\n")
+    # # Verify prototype_loader
+    # print("Verifying prototype_loader...")
+    # for batch_idx, batch in enumerate(prototype_loader):
+    #     print(f"Batch {batch_idx + 1}:")
+    #     print(f" - Batch shape: {batch.shape}")  # Expected: (prototype_batch_size, C, H, W)
+    #     # Optionally, visualize prototypes in the first batch
+    #     if batch_idx == 0:
+    #         num_prototypes = batch.size(0)
+    #         plt.figure(figsize=(num_prototypes * 2, 2))
+    #         for i in range(num_prototypes):
+    #             img = batch[i]
+    #             # Unnormalize the image for visualization
+    #             if dataset_name == 'Split-MNIST':
+    #                 img = img * 0.5 + 0.5  # Since it was normalized with mean=0.5, std=0.5
+    #                 img = img.squeeze().numpy()
+    #                 plt.subplot(1, num_prototypes, i + 1)
+    #                 plt.imshow(img, cmap='gray')
+    #             elif dataset_name in ['Split-CIFAR100', 'TinyImageNet']:
+    #                 # Adjust unnormalization based on dataset
+    #                 if dataset_name == 'Split-CIFAR100':
+    #                     mean = np.array([0.5, 0.5, 0.5])
+    #                     std = np.array([0.5, 0.5, 0.5])
+    #                 elif dataset_name == 'TinyImageNet':
+    #                     mean = np.array([0.485, 0.456, 0.406])
+    #                     std = np.array([0.229, 0.224, 0.225])
+    #                 img = img.permute(1, 2, 0).numpy()  # Convert from (C, H, W) to (H, W, C)
+    #                 img = (img * std + mean).clip(0, 1)  # Unnormalize and clip
+    #                 plt.subplot(1, num_prototypes, i + 1)
+    #                 plt.imshow(img)
+    #             plt.axis('off')
+    #         plt.suptitle("Prototypes Batch 1")
+    #         plt.show()
+    # print("Prototype_loader verification completed.\n")
 
-    # Verify task_prototypes mapping
-    print("Verifying task_prototypes mapping...")
-    for t in range(num_tasks):
-        prototypes = task_prototypes[t]
-        print(f"Task {t}:")
-        print(f" - Number of prototypes: {prototypes.shape[0]}")
-        print(f" - Prototype shape: {prototypes.shape[1:]}")
-        # Optionally, visualize the first prototype of each task
-        if t < 1:  # Change or remove this condition to visualize more tasks
-            plt.figure(figsize=(2, 2))
-            img = prototypes[0]
-            if dataset_name == 'Split-MNIST':
-                img = img * 0.5 + 0.5
-                img = img.squeeze().numpy()
-                plt.imshow(img, cmap='gray')
-            elif dataset_name in ['Split-CIFAR100', 'TinyImageNet']:
-                if dataset_name == 'Split-CIFAR100':
-                    mean = np.array([0.5, 0.5, 0.5])
-                    std = np.array([0.5, 0.5, 0.5])
-                elif dataset_name == 'TinyImageNet':
-                    mean = np.array([0.485, 0.456, 0.406])
-                    std = np.array([0.229, 0.224, 0.225])
-                img = img.permute(1, 2, 0).numpy()  # Convert from (C, H, W) to (H, W, C)
-                img = (img * std + mean).clip(0, 1)  # Unnormalize and clip
-                plt.imshow(img)
-            plt.title(f"Task {t} Prototype")
-            plt.axis('off')
-            plt.show()
-    print("Task_prototypes mapping verification completed.\n")
+    # # Verify task_prototypes mapping
+    # print("Verifying task_prototypes mapping...")
+    # for t in range(num_tasks):
+    #     prototypes = task_prototypes[t]
+    #     print(f"Task {t}:")
+    #     print(f" - Number of prototypes: {prototypes.shape[0]}")
+    #     print(f" - Prototype shape: {prototypes.shape[1:]}")
+    #     # Optionally, visualize the first prototype of each task
+    #     if t < 1:  # Change or remove this condition to visualize more tasks
+    #         plt.figure(figsize=(2, 2))
+    #         img = prototypes[0]
+    #         if dataset_name == 'Split-MNIST':
+    #             img = img * 0.5 + 0.5
+    #             img = img.squeeze().numpy()
+    #             plt.imshow(img, cmap='gray')
+    #         elif dataset_name in ['Split-CIFAR100', 'TinyImageNet']:
+    #             if dataset_name == 'Split-CIFAR100':
+    #                 mean = np.array([0.5, 0.5, 0.5])
+    #                 std = np.array([0.5, 0.5, 0.5])
+    #             elif dataset_name == 'TinyImageNet':
+    #                 mean = np.array([0.485, 0.456, 0.406])
+    #                 std = np.array([0.229, 0.224, 0.225])
+    #             img = img.permute(1, 2, 0).numpy()  # Convert from (C, H, W) to (H, W, C)
+    #             img = (img * std + mean).clip(0, 1)  # Unnormalize and clip
+    #             plt.imshow(img)
+    #         plt.title(f"Task {t} Prototype")
+    #         plt.axis('off')
+    #         plt.show()
+    # print("Task_prototypes mapping verification completed.\n")
 
-    # Optionally, verify that prototypes are excluded from training data
-    print("Verifying that prototypes are excluded from training data...")
-    all_train_indices = set()
-    for t, (train_set, val_set) in timestep_tasks.items():
-        # Extract the original indices from the train_set
-        # Note: random_split creates Subset objects with subset.indices
-        subset = train_set
-        if isinstance(subset, Subset):
-            subset_indices = subset.indices
-        else:
-            subset_indices = []
-        all_train_indices.update(subset_indices)
+    # # Optionally, verify that prototypes are excluded from training data
+    # print("Verifying that prototypes are excluded from training data...")
+    # all_train_indices = set()
+    # for t, (train_set, val_set) in timestep_tasks.items():
+    #     # Extract the original indices from the train_set
+    #     # Note: random_split creates Subset objects with subset.indices
+    #     subset = train_set
+    #     if isinstance(subset, Subset):
+    #         subset_indices = subset.indices
+    #     else:
+    #         subset_indices = []
+    #     all_train_indices.update(subset_indices)
 
-    # Check that none of the prototype indices are in the training indices
-    intersection = all_train_indices.intersection(prototype_indices)
-    if len(intersection) == 0:
-        print("Success: No prototype indices found in the training data.")
-    else:
-        print(f"Error: Found {len(intersection)} prototype indices in the training data.")
-    print("Verification of prototype exclusion completed.\n")
+    # # Check that none of the prototype indices are in the training indices
+    # intersection = all_train_indices.intersection(prototype_indices)
+    # if len(intersection) == 0:
+    #     print("Success: No prototype indices found in the training data.")
+    # else:
+    #     print(f"Error: Found {len(intersection)} prototype indices in the training data.")
+    # print("Verification of prototype exclusion completed.\n")
 
-    # Summary of tasks and prototypes
-    print("Summary of tasks and prototypes:")
-    for t in range(num_tasks):
-        classes = timestep_task_classes[t]
-        num_classes_task = len(classes)
-        print(f"Task {t}: {num_classes_task} classes")
-        # Optionally, list class names or indices
-        class_names = [task_metadata[t][idx] for idx in range(num_classes_task)]
-        print(f" - Classes: {class_names}\n")
+    # # Summary of tasks and prototypes
+    # print("Summary of tasks and prototypes:")
+    # for t in range(num_tasks):
+    #     classes = timestep_task_classes[t]
+    #     num_classes_task = len(classes)
+    #     print(f"Task {t}: {num_classes_task} classes")
+    #     # Optionally, list class names or indices
+    #     class_names = [task_metadata[t][idx] for idx in range(num_classes_task)]
+    #     print(f" - Classes: {class_names}\n")
 
     print("All verifications completed successfully.")
