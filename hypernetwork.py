@@ -13,11 +13,13 @@ from backbones import ResNet50, MobileNetV2, EfficientNetB0
 import random
 from config import config
 
-torch.manual_seed(31)
-np.random.seed(31)
-random.seed(31)
-torch.cuda.manual_seed_all(31)
-torch.cuda.manual_seed(31)
+from config import *
+
+torch.manual_seed(config['misc']['random_seed'])
+np.random.seed(config['misc']['random_seed'])
+random.seed(config['misc']['random_seed'])
+torch.cuda.manual_seed_all(config['misc']['random_seed'])
+torch.cuda.manual_seed(config['misc']['random_seed'])
 
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
