@@ -64,6 +64,8 @@ torch.backends.cudnn.benchmark = False
 
 torch.cuda.empty_cache()
 
+device = torch.device(config['misc']['device'])
+
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
 TEST_FRAC = 0.1
