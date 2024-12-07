@@ -2,21 +2,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models import resnet50
-from copy import deepcopy
-
 import numpy as np
-# import random
-# import numpy as np
 
-# from collections import OrderedDict
 from torchmeta.modules import MetaSequential, MetaLinear
-
 from metamodules import FCBlock, BatchLinear, HyperNetwork, get_subdict, HyperNetwork_seq
 from torchmeta.modules import MetaModule
 from copy import deepcopy
 
 from backbones import ResNet50, MobileNetV2, EfficientNetB0
 import random
+from config import config
 
 torch.manual_seed(31)
 np.random.seed(31)
@@ -32,7 +27,7 @@ backbone_dict = {
     'efficientnetb0': EfficientNetB0
 }
 
-device = torch.device('cuda:2' if torch.cuda.is_available() else 'cpu')
+device = torch.device(config['misc']['device'] if torch.cuda.is_available() else 'cpu')
 
 class HyperCMTL(nn.Module):
     """
@@ -621,8 +616,8 @@ class HyperCMTL_seq_simple_2d(nn.Module):
         self.backbone_copy = deepcopy(self.backbone)
         self.task_head_copy = self.task_head.deepcopy()
 
-
-        self.size_emb = 20*20*self.task_head_num_classes
+        self.num_channels_prototype = 1
+        self.size_emb = 20*20*self.num_channels_prototype*self.task_head_num_classes
 
         # Hypernetwork
         self.backbone_emb_size = self.backbone.num_features
@@ -649,12 +644,13 @@ class HyperCMTL_seq_simple_2d(nn.Module):
         backbone_out = self.backbone(support_set)
         task_head_out = self.task_head(backbone_out, params=params)
         
-        z_2d = z.view(self.task_head_num_classes, 1, 20, 20)
+        z_2d = z.view(self.task_head_num_classes, self.num_channels_prototype, 20, 20)
         self.learned_prototyes = z_2d
 
         z_2d = z_2d.repeat(1, 3, 1, 1)
-        z_out = self.backbone_copy(z_2d)
-        z_out = self.task_head_copy(z_out, params=params)
+        with torch.no_grad():
+            z_out = self.backbone(z_2d)
+            z_out = self.task_head(z_out, params=params)
 
         return task_head_out.squeeze(0), z_out.squeeze(0)
     
@@ -688,12 +684,25 @@ class HyperCMTL_seq_simple_2d(nn.Module):
             return self.learned_prototyes
         else: 
             z = self.hyper_emb(torch.LongTensor([task_idx]).to(self.device))
-            z_2d = z.view(self.task_head_num_classes, 1, 20, 20)
+            z_2d = z.view(self.task_head_num_classes, self.num_channels_prototype, 20, 20)
             return z_2d
 
 
+    def initialize_embeddings(self, embeddings, task_idx=None):
+        if task_idx is None:
+            self.hyper_emb.weight.data = embeddings
+            return self.hyper_emb.weight.data
+        
+        current_weights = self.hyper_emb.weight.data
+        current_weights[task_idx] = embeddings
+        self.hyper_emb.weight.data = current_weights
+        return self.hyper_emb.weight.data
 
 
+
+
+
+import matplotlib.pyplot as plt
 class HyperCMTL_seq_simple_2d_color(nn.Module):
     """
     Hypernetwork-based Conditional Multi-Task Learning (HyperCMTL) model.
@@ -766,13 +775,14 @@ class HyperCMTL_seq_simple_2d_color(nn.Module):
         self.backbone_copy = deepcopy(self.backbone)
         self.task_head_copy = self.task_head.deepcopy()
 
+        self.height_prototype = 11
 
-        self.size_emb = 20*20*self.task_head_num_classes*3
+        self.size_emb = self.height_prototype*self.height_prototype*self.task_head_num_classes*3
 
         # Hypernetwork
         self.backbone_emb_size = self.backbone.num_features
         self.hyper_emb = nn.Embedding(self.num_instances, self.size_emb)
-        nn.init.normal_(self.hyper_emb.weight, mean=0.5, std=0.25)
+        nn.init.normal_(self.hyper_emb.weight, mean=0.5, std=0)
         
         self.hypernet = HyperNetwork_seq(hyper_in_features=self.size_emb,
                                      hyper_hidden_layers=6,
@@ -794,11 +804,11 @@ class HyperCMTL_seq_simple_2d_color(nn.Module):
         backbone_out = self.backbone(support_set)
         task_head_out = self.task_head(backbone_out, params=params)
         
-        z_2d = z.view(self.task_head_num_classes, 3, 20, 20)
+        z_2d = z.view(self.task_head_num_classes, 3, self.height_prototype, self.height_prototype)
         self.learned_prototyes = z_2d
 
-        # plt.imshow(z_2d[i].cpu().detach().numpy().reshape(3, 20, 20).transpose(1, 2, 0) * 255)
-
+        # plt.imshow(z_2d[0].cpu().detach().numpy().reshape(3, 20, 20).transpose(1, 2, 0) * 255)
+        # plt.savefig("z_2d.png")
         # z_2d = z_2d.repeat(1, 3, 1, 1)
         z_out = self.backbone_copy(z_2d)
         z_out = self.task_head_copy(z_out, params=params)
@@ -835,7 +845,7 @@ class HyperCMTL_seq_simple_2d_color(nn.Module):
             return self.learned_prototyes
         else: 
             z = self.hyper_emb(torch.LongTensor([task_idx]).to(self.device))
-            z_2d = z.view(self.task_head_num_classes, 3, 20, 20)
+            z_2d = z.view(self.task_head_num_classes, 3, self.height_prototype, self.height_prototype)
             return z_2d
 
 

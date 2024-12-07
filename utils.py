@@ -18,7 +18,7 @@ import random
 import torch
 import random
 from torch.utils.data import Sampler
-
+from config import config
 
 torch.manual_seed(31)
 np.random.seed(31)
@@ -31,7 +31,7 @@ torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-device = torch.device('cuda:2' if torch.cuda.is_available() else 'cpu')
+device = torch.device(config['misc']['device'] if torch.cuda.is_available() else 'cpu')
 def inspect_batch(images, labels=None, predictions=None, class_names=None, title=None,
                   center_title=True, max_to_show=16, num_cols=4, scale=1):
     """

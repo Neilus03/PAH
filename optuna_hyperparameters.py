@@ -10,6 +10,7 @@ import time
 import os
 from tqdm import tqdm
 import logging
+from config import config
 
 class Logger:
     def __init__(self, results_dir):
@@ -25,7 +26,7 @@ class Logger:
 os.environ["CUDA_VISIBLE_DEVICES"]="4"
 
 # Device setup
-device = torch.device("cuda:4" if torch.cuda.is_available() else "cpu")
+device = torch.device(config['misc']['device'] if torch.cuda.is_available() else "cpu")
 
 # Define the objective function for Optuna optimization
 def objective(trial):
@@ -38,7 +39,7 @@ def objective(trial):
     hyper_hidden_layers = trial.suggest_int('hyper_hidden_layers', 2, 6)  # Hypernetwork layers
 
     # Dataset and training setup
-    dataset = "Split-CIFAR100"  # Set your dataset
+    dataset = "Split-CIFAR100"  # Set your dataset between "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
     NUM_TASKS = 5 if dataset=='Split-MNIST' else 10  # Set the number of tasks
     BATCH_SIZE = 128  # Set batch size
     EPOCHS_PER_TIMESTEP = 12  # Set number of epochs per timestep
@@ -52,7 +53,7 @@ def objective(trial):
     os.makedirs('results', exist_ok=True)
     # num = str(len(os.listdir('results/'))).zfill(3)
     num = time.strftime("%m%d-%H%M%S")
-    results_dir = 'results/' + num + '-HyperCMTL_seq'
+    results_dir = 'results/' + num + '-HyperCMTL_seq_' + dataset
     os.makedirs(results_dir, exist_ok=True)
 
     # Initialize the logger
@@ -83,7 +84,7 @@ def objective(trial):
     ).to(device)
 
     # Log the model architecture and configuration
-    logger.log(f'Model architecture: {model}')
+    # logger.log(f'Model architecture: {model}')
     logger.log(f"Model initialized with backbone_config={backbone}, task_head_projection_size={task_head_projection_size}, hyper_hidden_features={hyper_hidden_features}, hyper_hidden_layers={hyper_hidden_layers}")
     
     # Initialize the previous model
@@ -260,17 +261,14 @@ def objective(trial):
 
 # Create the Optuna study
 study = optuna.create_study(direction='maximize')  # Maximize the validation accuracy
-study.optimize(objective, n_trials=20)  # Number of trials can be adjusted
+study.optimize(objective, n_trials=30)  # Number of trials can be adjusted
 
 # save figures and plot for the optuna study
-plot_optimization_history(study).write_image(results_dir + '/optuna_study.png')
-plot_param_importances(study).write_image(results_dir + '/optuna_params.png')
-plot_optimization_history(study).write_image(results_dir + '/optuna_study.png')
-
-plot_param_importances(study)
+plot_optimization_history(study).write_image('results/optuna_study.png')
+plot_param_importances(study).write_image('results/optuna_params.png')
 
 # save the .npy file with the optimal hyperparameters found in the study 
-np.save(results_dir + '/optuna_hyperparameters.npy', study.best_trial.params)
+np.save('results/optuna_hyperparameters.npy', study.best_trial.params)
 study.best_trial.params["lr"]
 
 # Print the best hyperparameters
