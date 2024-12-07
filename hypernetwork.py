@@ -13,7 +13,6 @@ from backbones import ResNet50, MobileNetV2, EfficientNetB0
 import random
 from config import config
 
-from config import *
 
 torch.manual_seed(config['misc']['random_seed'])
 np.random.seed(config['misc']['random_seed'])
@@ -602,7 +601,13 @@ class HyperCMTL_seq_simple_2d(nn.Module):
         else: 
             raise ValueError(f"Backbone {backbone} is not supported.")
         
-
+        if config['model']['frozen_backbone'] == True:
+            for param in self.backbone.parameters():
+                param.requires_grad = False
+        else:
+            for param in self.backbone.parameters():
+                param.requires_grad = True
+        
         # freeze the backbone 
         # for param in self.backbone.parameters():
         #     param.requires_grad = False
