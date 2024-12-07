@@ -32,7 +32,8 @@ from tqdm import tqdm
 import os
 
 # Functions from utils to help with training and evaluation
-from utils import inspect_batch, test_evaluate, training_plot, setup_dataset, inspect_task, distillation_output_loss, evaluate_model, evaluate_model_prototypes, get_batch_acc, logger
+from utils import *
+from networks_baseline import *
 
 # Import the wandb library for logging metrics and visualizations
 import wandb
@@ -47,125 +48,37 @@ import pdb
 
 import random
 from torch.utils.data import Sampler
+from backbones import ResNet50, MobileNetV2, EfficientNetB0
 
-torch.manual_seed(69)
-np.random.seed(69)
-random.seed(69)
-torch.cuda.manual_seed_all(69)
-torch.cuda.manual_seed(69)
+config = config_load('./configs/baseline.py')
+seed_everything(config['misc_config']['seed'])
 
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
-
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
-### as before, define a classification head that we can attach to the backbone:
-class TaskHead(nn.Module):
-    def __init__(self, input_size: int, # number of features in the backbone's output
-                 projection_size: int,  # number of neurons in the hidden layer
-                 num_classes: int,      # number of output neurons
-                 dropout: float=0.,     # optional dropout rate to apply
-                 device=device):
-        super().__init__()
-        
-        self.projection = nn.Linear(input_size, projection_size)
-        self.classifier = nn.Linear(projection_size, num_classes)
-
-        if dropout > 0:
-            self.dropout = nn.Dropout(dropout)
-        else:
-            self.dropout = nn.Identity()
-
-        self.relu = nn.ReLU()
-
-        self.device = device
-        self.to(device)
-
-    def forward(self, x):
-        # assume x is already unactivated feature logits,
-        # e.g. from resnet backbone
-        x = self.projection(self.relu(self.dropout(x)))
-        x = self.classifier(self.relu(self.dropout(x)))
-
-        return x
-    
-    
-### and a baseline_lwf_model that contains a backbone plus multiple class heads,
-### and performs task-ID routing at runtime, allowing it to perform any learned task:
-class MultitaskModel(nn.Module):
-    def __init__(self, backbone: nn.Module, 
-                 device=device):
-        super().__init__()
-
-        self.backbone = backbone
-
-        # for param in self.backbone.parameters():
-        #     param.requires_grad = False
-
-        # a dict mapping task IDs to the classification heads for those tasks:
-        self.task_heads = nn.ModuleDict()        
-        # we must use a nn.ModuleDict instead of a base python dict,
-        # to ensure that the modules inside are properly registered in self.parameters() etc.
-
-        self.relu = nn.ReLU()
-        self.device = device
-        self.to(device)
-
-    def forward(self, 
-                x: torch.Tensor, 
-                task_id: int):
-        
-        task_id = str(int(task_id))
-        # nn.ModuleDict requires string keys for some reason,
-        # so we have to be sure to cast the task_id from tensor(2) to 2 to '2'
-        
-        assert task_id in self.task_heads, f"no head exists for task id {task_id}"
-        
-        # select which classifier head to use:
-        chosen_head = self.task_heads[task_id]
-
-        # activated features from backbone:
-        x = self.relu(self.backbone(x))
-        # task-specific prediction:
-        x = chosen_head(x)
-
-        return x
-
-    def add_task(self, 
-                 task_id: int, 
-                 head: nn.Module):
-        """accepts an integer task_id and a classification head
-        associated to that task.
-        adds the head to this baseline_lwf_model's collection of task heads."""
-        self.task_heads[str(task_id)] = head
-
-    @property
-    def num_task_heads(self):
-        return len(self.task_heads)
-
-torch.manual_seed(0)
-
-torch.cuda.empty_cache()
-
+device = torch.device(config['misc_config']['device'] if torch.cuda.is_available() else "cpu")
 
 ### dataset hyperparameters:
-VAL_FRAC = 0.1
-TEST_FRAC = 0.1
-BATCH_SIZE = 512
-dataset = "Split-CIFAR100" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
-NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
+VAL_FRAC = config['dataset_config']['VAL_FRAC']
+TEST_FRAC = config['dataset_config']['TEST_FRAC']
+BATCH_SIZE = config['dataset_config']['BATCH_SIZE']
+dataset = config['dataset_config']['dataset']
+NUM_TASKS = config['dataset_config']['NUM_TASKS']
 
 ### training hyperparameters:
-EPOCHS_PER_TIMESTEP = 15
-lr     = 1e-4  # initial learning rate
-l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
-temperature = 2.0  # temperature scaling factor for distillation loss
-stability = 5 #`stability` term to balance this soft loss with the usual hard label loss for the current classification task.
-freeze_backbone = True
+EPOCHS_PER_TIMESTEP = config['training_config']['epochs_per_timestep']
+lr     = config['training_config']['lr'] 
+l2_reg = config['training_config']['l2_reg']
+temperature = config['training_config']['temperature']
+stability = config['training_config']['stability']
+backbone_name = config['model_config']['backbone']
+freeze_backbone = config['training_config']['freeze_backbone']
 
-os.makedirs('results', exist_ok=True)
-# num = str(len(os.listdir('results/'))).zfill(3)
+### metrics and plotting:
+plot_training = True   # show training plots after each timestep
+show_progress = True   # show progress bars and end-of-epoch metrics
+verbose       = True   # output extra info to console
+
 num = time.strftime("%m%d-%H%M%S")
-results_dir = 'results/' + num + '-HyperCMTL'
+name_run = num + config['logging_config']['name']
+results_dir = os.path.join(config['logging_config']['results_dir'], name_run)
 os.makedirs(results_dir, exist_ok=True)
 
 logger = logger(results_dir)
@@ -185,40 +98,33 @@ task_metadata = data['task_metadata']
 task_test_sets = data['task_test_sets']
 images_per_class = data['images_per_class']
 
-# More complex model configuration
-backbone_name = 'resnet50'                  # ResNet50 backbone. others: ['mobilenetv2', 'efficientnetb0', 'vit'] #vit not yet working
-task_head_projection_size = 256          # Even larger hidden layer in task head
-hyper_hidden_features = 256             # Larger hypernetwork hidden layer size
-hyper_hidden_layers = 4                 # Deeper hypernetwork
+backbone_dict = {
+    'resnet50': ResNet50,
+    'mobilenetv2': MobileNetV2,
+    'efficientnetb0': EfficientNetB0
+}
 
-
-
-backbone = models.resnet50(pretrained=True)
-backbone.num_features = backbone.fc.in_features
+backbone = backbone_dict[backbone_name](device=device, pretrained=True)
+# backbone.num_features = backbone.fc.in_features
 
 if freeze_backbone:
     for param in backbone.parameters():
         param.requires_grad = False
 
-baseline_lwf_model = MultitaskModel(backbone.to(device))
+baseline_lwf_model = MultitaskModel_Baseline(backbone, device=device)
 
 
 # Log the model architecture and configuration
 logger.log(f'Model architecture: {baseline_lwf_model}')
 
-logger.log(f"Model initialized with backbone_config={backbone}, task_head_projection_size={task_head_projection_size}, hyper_hidden_features={hyper_hidden_features}, hyper_hidden_layers={hyper_hidden_layers}")
+logger.log(f"Model initialized with backbone_config={backbone_name}, freeze_backbone={freeze_backbone}")
 
 # Initialize the previous model
 previous_model = None
 
 # Initialize optimizer and loss function:
-opt = torch.optim.Adam(baseline_lwf_model.parameters(), lr=lr, weight_decay=l2_reg)
+opt = setup_optimizer(baseline_lwf_model, lr=lr, l2_reg=l2_reg, optimizer=config['training_config']['optimizer'])
 loss_fn = nn.CrossEntropyLoss()
-
-### metrics and plotting:
-plot_training = True   # show training plots after each timestep
-show_progress = True   # show progress bars and end-of-epoch metrics
-verbose       = True   # output extra info to console
 
 # track metrics for plotting training curves:
 metrics = { 'train_losses': [],
@@ -262,20 +168,23 @@ def count_optimizer_parameters(optimizer: torch.optim.Optimizer) -> None:
     print("===================================\n")
 
 
-with wandb.init(project='HyperCMTL', name=f'LwF_Baseline-{dataset}-{backbone_name}', group="CorrectSplit") as run:
+with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config) as run:
     #wandb.watch(baseline_lwf_model, log='all', log_freq=100)
 
-    count_optimizer_parameters(opt)
+    # count_optimizer_parameters(opt)
     # outer loop over each task, in sequence
     for t, (task_train, task_val) in timestep_tasks.items():
         task_train.num_classes = len(timestep_task_classes[t])
-        print(f'task_train.num_classes: {task_train.num_classes}')
+        # print(f'task_train.num_classes: {task_train.num_classes}')
         logger.log(f"Training on task id: {t}  (classification between: {task_metadata[t]})")
         if t not in baseline_lwf_model.task_heads:
-            task_head = TaskHead(input_size=1000, projection_size=64, num_classes=task_train.num_classes).to(device)
+            task_head = TaskHead_Baseline(input_size=baseline_lwf_model.backbone.num_features,
+                                          projection_size=config['model_config']['task_head_projection_size'],
+                                          num_classes=task_train.num_classes, 
+                                          device=device)
             baseline_lwf_model.add_task(t, task_head)
             opt.add_param_group({'params': task_head.parameters()})
-            count_optimizer_parameters(opt)
+            # count_optimizer_parameters(opt)
 
         # build train and validation loaders for the current task:
         train_loader, val_loader = [utils.data.DataLoader(data,
@@ -333,9 +242,9 @@ with wandb.init(project='HyperCMTL', name=f'LwF_Baseline-{dataset}-{backbone_nam
                     progress_bar.set_description((f'E{e} batch loss:{hard_loss:.2f}, batch acc:{epoch_train_accs[-1]:>5.1%}'))
 
             # evaluate after each epoch on the current task's validation set:
-            avg_val_loss, avg_val_acc = evaluate_model(baseline_lwf_model, val_loader, loss_fn)
+            avg_val_loss, avg_val_acc, time = evaluate_model_timed(baseline_lwf_model, val_loader, loss_fn, device=device)
             
-            wandb.log({'val_loss': avg_val_loss, 'val_accuracy': avg_val_acc, 'epoch': e, 'task_id': t})
+            wandb.log({'val_loss': avg_val_loss, 'val_accuracy': avg_val_acc, 'epoch': e, 'task_id': t, 'time': time})
 
             ### update metrics:
             metrics['epoch_steps'].append(metrics['steps_trained'])
@@ -348,7 +257,7 @@ with wandb.init(project='HyperCMTL', name=f'LwF_Baseline-{dataset}-{backbone_nam
             if show_progress:
                 # print end-of-epoch stats:
                 print((f'E{e} loss:{np.mean(epoch_train_losses):.2f}|v:{avg_val_loss:.2f}' +
-                                    f'| acc t:{np.mean(epoch_train_accs):>5.1%}|v:{avg_val_acc:>5.1%}'))
+                                    f'| acc t:{np.mean(epoch_train_accs):>5.1%}|v:{avg_val_acc:>5.1%} in {time:.2f}s'))
 
             if avg_val_acc > metrics['best_val_acc']:
                 metrics['best_val_acc'] = avg_val_acc
@@ -365,21 +274,22 @@ with wandb.init(project='HyperCMTL', name=f'LwF_Baseline-{dataset}-{backbone_nam
         metrics['best_val_acc'] = 0.0   
 
         # evaluate on all tasks:
-        test_accs = test_evaluate(baseline_lwf_model, task_test_sets[:t+1],
+        metrics_test = test_evaluate_metrics(baseline_lwf_model, task_test_sets[:t+1],
                                   task_test_sets=task_test_sets, 
                                 model_name=f'LwF at t={t}', 
                                 prev_accs = prev_test_accs,
                                 #baseline_taskwise_accs = baseline_taskwise_test_accs, 
                                 verbose=True,
-                                task_metadata=task_metadata)
-        wandb.log({'mean_test_acc': np.mean(test_accs), 'task_id': t})
+                                task_metadata=task_metadata,
+                                device=device)
+        
+        wandb.log({**metrics_test, 'task_id': t})
 
-        prev_test_accs.append(test_accs)
+        prev_test_accs.append(metrics_test['task_test_accs'])
         
         #store the current baseline_lwf_model as the previous baseline_lwf_model
         previous_model = deepcopy(baseline_lwf_model)
 
-    final_avg_test_acc = np.mean(test_accs)
-    print(f'Final average test accuracy: {final_avg_test_acc:.2%}')
-    wandb.summary['final_avg_test_acc'] = final_avg_test_acc 
+    print(f'Final metrics: {metrics_test}')
+    wandb.summary.update(metrics_test)
    

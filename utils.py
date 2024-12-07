@@ -18,21 +18,12 @@ import random
 import torch
 import random
 from torch.utils.data import Sampler
-from config import config
-
-from config import *
-
-torch.manual_seed(config['misc']['random_seed'])
-np.random.seed(config['misc']['random_seed'])
-random.seed(config['misc']['random_seed'])
-torch.cuda.manual_seed_all(config['misc']['random_seed'])
-torch.cuda.manual_seed(config['misc']['random_seed'])
+# from configs.config import config
+import time
+import os
+from easydict import EasyDict 
 
 
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
-
-device = torch.device(config['misc']['device'] if torch.cuda.is_available() else 'cpu')
 def inspect_batch(images, labels=None, predictions=None, class_names=None, title=None,
                   center_title=True, max_to_show=16, num_cols=4, scale=1):
     """
@@ -318,7 +309,7 @@ def get_batch_acc(pred, y):
 def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi-task classification
                    val_loader: utils.data.DataLoader,  # task-specific data to evaluate on
                    loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
-                   device = device
+                   device = None
                   ):
     """
     Evaluates the model on a validation dataset.
@@ -338,7 +329,7 @@ def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi
         for batch in val_loader:
             vx, vy, task_ids = batch
             vx, vy = vx.to(device), vy.to(device)
-
+        
             # Forward pass with task-specific parameters
             vpred = multitask_model(vx, task_ids[0])
 
@@ -352,10 +343,53 @@ def evaluate_model(multitask_model: nn.Module,  # trained model capable of multi
     # Return average loss and accuracy across all batches
     return np.mean(batch_val_losses), np.mean(batch_val_accs)
 
+def evaluate_model_timed(multitask_model: nn.Module,  # trained model capable of multi-task classification
+                   val_loader: utils.data.DataLoader,  # task-specific data to evaluate on
+                   loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
+                   device = None
+                  ):
+    """
+    Evaluates the model on a validation dataset.
+
+    Args:
+        multitask_model (nn.Module): The trained multitask model to evaluate.
+        val_loader (DataLoader): DataLoader for the validation dataset.
+        loss_fn (_Loss, optional): Loss function to calculate validation loss. Default is CrossEntropyLoss.
+
+    Returns:
+        tuple: Average validation loss and accuracy across all batches.
+    """
+    multitask_model.eval()
+    with torch.no_grad():
+        batch_val_losses, batch_val_accs = [], []
+
+        time_inf = []
+        # Iterate over all batches in the validation DataLoader
+        for batch in val_loader:
+            vx, vy, task_ids = batch
+            vx, vy, task_ids = vx.to(device), vy.to(device), task_ids.to(device)
+
+            start_time = time.time()
+            
+            # Forward pass with task-specific parameters
+            vpred = multitask_model(vx, task_ids[0])
+            time_inf.append(time.time() - start_time)
+
+            # Calculate loss and accuracy for the batch
+            val_loss = loss_fn(vpred, vy)
+            val_acc = get_batch_acc(vpred, vy)
+
+            batch_val_losses.append(val_loss.item())
+            batch_val_accs.append(val_acc)
+
+    # Return average loss and accuracy across all batches
+    multitask_model.train()
+    return np.mean(batch_val_losses), np.mean(batch_val_accs), np.mean(time_inf)
+
 def evaluate_model_2d(multitask_model: nn.Module,  # trained model capable of multi-task classification
                    val_loader: utils.data.DataLoader,  # task-specific data to evaluate on
                    loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
-                   device = device, 
+                   device = None, 
                    task_metadata = None,
                    task_id = 0,
                    wandb_run = None
@@ -417,7 +451,7 @@ def evaluate_model_prototypes(multitask_model: nn.Module,  # trained model capab
                    prototypes: torch.Tensor,  # prototypes for the current task
                    task_id: int,  # current task id
                    loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
-                   device: torch.device = device
+                   device: torch.device = None
                   ):
     """
     Evaluates the model on a validation dataset.
@@ -475,6 +509,7 @@ def test_evaluate_prototypes(multitask_model: nn.Module,
                   task_metadata=None,
                   task_id=0,
                   loss_fn=nn.CrossEntropyLoss(),
+                  device=None
                  ):
     """
     Evaluates the model on all selected test sets and optionally displays results.
@@ -705,6 +740,35 @@ def test_evaluate_2d(multitask_model: nn.Module,
     return task_test_accs, task_test_accs_prot
 
 
+def compute_FM_BWT(task_test_accs, prev_accs):
+    """
+    Computes the Forgetting Measure (FM) and Backward Transfer (BWT) metrics.
+
+    FM is the average difference between the max accuracy on each task and the current accuracy.
+    BWT is the average difference between the prev accuracy and the current accuracy. 
+
+    Args:
+        task_test_accs (list[float]): Taskwise accuracies for the selected test sets.
+        prev_accs (list[list[float]]): Previous accuracies for tracking forgetting.
+
+    Returns:
+        tuple: Average forgetting and backward transfer across all tasks.
+    """
+    # Calculate the forgetting metric
+    acc_per_task = []
+    for prev_acc in prev_accs:
+        acc_per_task.append([])
+        for i, acc in enumerate(prev_acc):
+            acc_per_task[i].append(acc)
+    
+    forgetting = [max(accs) - acc for accs, acc in zip(acc_per_task, task_test_accs)]
+    FM = np.mean(forgetting)
+    
+    # Calculate the Backward Transfer metric
+    backward_transfer = [acc - prev for prev, acc in zip(prev_accs[-1], task_test_accs)]
+    BWT = np.mean(backward_transfer)
+    
+    return FM, BWT
 
 # Evaluate the model on the test sets of all tasks
 def test_evaluate(multitask_model: nn.Module, 
@@ -761,8 +825,7 @@ def test_evaluate(multitask_model: nn.Module,
     avg_task_test_loss = np.mean(task_test_losses)
     avg_task_test_acc = np.mean(task_test_accs)
 
-    if verbose:
-        print(f'\n +++ AVERAGE TASK TEST ACCURACY: {avg_task_test_acc:.2%} +++ ')
+    print(f'\n +++ AVERAGE TASK TEST ACCURACY: {avg_task_test_acc:.2%} +++ ')
 
     # Plot taskwise accuracy if enabled
     if show_taskwise_accuracy:
@@ -806,6 +869,122 @@ def test_evaluate(multitask_model: nn.Module,
         plt.close()
 
     return task_test_accs
+
+# Evaluate the model on the test sets of all tasks
+def test_evaluate_metrics(multitask_model: nn.Module, 
+                  selected_test_sets,  
+                  task_test_sets, 
+                  prev_accs = None,
+                  show_taskwise_accuracy=True, 
+                  baseline_taskwise_accs = None, 
+                  model_name: str='', 
+                  verbose=False, 
+                  batch_size=16,
+                  results_dir="",
+                  task_id=0,
+                  task_metadata=None,
+                  device=None
+                 ):
+    """
+    Evaluates the model on all selected test sets and optionally displays results.
+    Args:
+        multitask_model (nn.Module): The trained multitask model to evaluate.
+        selected_test_sets (list[Dataset]): List of test datasets for each task.
+        prev_accs (list[list[float]], optional): Previous accuracies for tracking forgetting.
+        show_taskwise_accuracy (bool, optional): If True, plots a bar chart of taskwise accuracies.
+        baseline_taskwise_accs (list[float], optional): Baseline accuracies for comparison.
+        model_name (str, optional): Name of the model to show in plots. Default is ''.
+        verbose (bool, optional): If True, prints detailed evaluation results. Default is False.
+    Returns:
+        list[float]: Taskwise accuracies for the selected test sets.
+    """
+    metrics = {}
+    
+    print(f'{model_name} evaluation on test set of all tasks:'.capitalize())
+
+    task_test_losses = []
+    task_test_accs = []
+    task_test_times = []
+
+    # Iterate over each task's test dataset
+    for t, test_data in enumerate(selected_test_sets):
+        # Create a DataLoader for the current task's test dataset
+        test_loader = utils.data.DataLoader(test_data,
+                                       batch_size=batch_size,
+                                       shuffle=True)
+
+        # Evaluate the model on the current task
+        _, task_test_acc, time = evaluate_model_timed(multitask_model, test_loader, device=device)
+
+        print(f'{task_metadata[t]}: {task_test_acc:.2%} in {time:.2f} seconds')
+
+        task_test_accs.append(task_test_acc)
+        task_test_times.append(time)
+
+    # print(task_test_times)
+    metrics['task_test_accs'] = task_test_accs        
+    AA = np.mean(task_test_accs)
+    metrics['AA'] = AA
+    
+    if t > 0:
+        FM, BWT = compute_FM_BWT(task_test_accs, prev_accs)
+        metrics['FM'] = FM
+        metrics['BWT'] = BWT
+    else:
+        FM = 0
+        BWT = 0
+        metrics['FM'] = FM
+        metrics['BWT'] = BWT
+    
+    Num_params = sum(p.numel() for p in multitask_model.parameters())
+    Time_inf = np.mean(task_test_times)
+    metrics['Num_params'] = Num_params
+    metrics['Time_inf'] = Time_inf
+    
+    print(f'\n +++ AA: {AA:.2%}, FM: {FM:.2%}, BWT: {BWT:.2%}, Num_params: {Num_params}, Time_inf: {Time_inf:.2f} +++ ')
+
+    # Plot taskwise accuracy if enabled
+    if show_taskwise_accuracy:
+        bar_heights = task_test_accs + [0]*(len(task_test_sets) - len(selected_test_sets))
+        # display bar plot with accuracy on each evaluation task
+        plt.bar(x = range(len(task_test_sets)), height=bar_heights, zorder=1)
+
+        plt.xticks(
+        range(len(task_test_sets)),
+        [','.join(task_classes.values()) for t, task_classes in task_metadata.items()],
+        rotation='vertical'
+        )
+
+        plt.axhline(AA, c=[0.4]*3, linestyle=':')
+        plt.text(0, AA+0.002, f'{model_name} (average)', c=[0.4]*3, size=8)
+
+        if prev_accs is not None:
+            # plot the previous step's accuracies on top
+            # (will show forgetting in red)
+            for p, prev_acc_list in enumerate(prev_accs):
+                plt.bar(x = range(len(prev_acc_list)), height=prev_acc_list, fc='tab:red', zorder=0, alpha=0.5*((p+1)/len(prev_accs)))
+
+        if baseline_taskwise_accs is not None:
+            for t, acc in enumerate(baseline_taskwise_accs):
+                plt.plot([t-0.5, t+0.5], [acc, acc], c='black', linestyle='--')
+
+            # show average as well:
+            baseline_avg = np.mean(baseline_taskwise_accs)
+            plt.axhline(baseline_avg, c=[0.6]*3, linestyle=':')
+            plt.text(0, baseline_avg+0.002, 'baseline average', c=[0.6]*3, size=8)
+
+        plt.ylim([0, 1])
+        #plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+        # Save figure to wandb
+        file_path = os.path.join(results_dir, f'taskwise_accuracy_task_{task_id}.png')
+        plt.savefig(file_path)
+        img = Image.open(file_path)
+        wandb.log({f'taskwise accuracy': wandb.Image(img), 'task': task_id})
+
+        plt.close()
+
+    return metrics
 
 
 def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, test_frac=0.1, batch_size=256):
@@ -1313,13 +1492,56 @@ class logger:
         
         
         
+def seed_everything(seed=69):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.cuda.manual_seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.cuda.empty_cache()
         
+
+def _merge(d1: EasyDict, d2: EasyDict):
+	res = EasyDict(d1)
+	for key, value in d2.items():
+		if isinstance(value, EasyDict) and isinstance(res.get(key, None), EasyDict):
+			res[key] = _merge(res[key], value)
+		else: res[key] = value
+	return res
+
         
+def config_load(filename) -> EasyDict:
+	if filename.find('/') != -1:
+		__CONFIG_ROOTDIR__ = filename.split('/')[-2]
+	else: __CONFIG_ROOTDIR__ = ''
+	with open(filename, 'r') as f:
+		__CONTENT__ = f.read()
+	del filename, f
+	exec(__CONTENT__)
+	res = EasyDict(**locals())
+	res.pop('__CONTENT__')
+	res.pop('__CONFIG_ROOTDIR__')
+	if res.get('_base_', None) is not None:
+		bases = EasyDict()
+		for basename in list(res._base_):
+			base = config_load(os.path.join(__CONFIG_ROOTDIR__, basename))
+			bases = _merge(bases, base)
+		res = _merge(res, bases)
+	return res
         
-        
-        
-        
-        
+
+def setup_optimizer(model, lr, l2_reg, optimizer):
+    if optimizer == "Adam":
+        return torch.optim.Adam(model.parameters(), lr=lr, weight_decay=l2_reg)
+    elif optimizer == "SGD":
+        return torch.optim.SGD(model.parameters(), lr=lr, weight_decay=l2_reg)
+    elif optimizer == "AdamW":
+        return torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=l2_reg)
+    
         
         
 #-----------------------------------------------------------------#
