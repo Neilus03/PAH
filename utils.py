@@ -20,11 +20,14 @@ import random
 from torch.utils.data import Sampler
 
 
-torch.manual_seed(69)
-np.random.seed(69)
-random.seed(69)
-torch.cuda.manual_seed_all(69)
-torch.cuda.manual_seed(69)
+torch.manual_seed(31)
+np.random.seed(31)
+random.seed(31)
+torch.cuda.manual_seed_all(31)
+torch.cuda.manual_seed(31)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
@@ -1329,9 +1332,9 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     # Set random seeds for reproducibility
-    random.seed(69)
-    np.random.seed(69)
-    torch.manual_seed(69)
+    random.seed(31)
+    np.random.seed(31)
+    torch.manual_seed(31)
 
     # Parameters for the setup
     dataset_name = 'Split-CIFAR100'  # Change as needed: 'Split-MNIST', 'Split-CIFAR100', 'TinyImageNet'

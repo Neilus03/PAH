@@ -18,14 +18,14 @@ from copy import deepcopy
 from backbones import ResNet50, MobileNetV2, EfficientNetB0
 import random
 
-torch.manual_seed(69)
-np.random.seed(69)
-random.seed(69)
-torch.cuda.manual_seed_all(69)
-torch.cuda.manual_seed(69)
+torch.manual_seed(31)
+np.random.seed(31)
+random.seed(31)
+torch.cuda.manual_seed_all(31)
+torch.cuda.manual_seed(31)
+
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
-
 backbone_dict = {
     'resnet50': ResNet50,
     'mobilenetv2': MobileNetV2,
