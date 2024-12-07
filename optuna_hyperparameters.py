@@ -39,10 +39,10 @@ def objective(trial):
     hyper_hidden_layers = trial.suggest_int('hyper_hidden_layers', 2, 6)  # Hypernetwork layers
 
     # Dataset and training setup
-    dataset = "Split-MNIST"  # Set your dataset
+    dataset = "Split-CIFAR100"  # Set your dataset between "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
     NUM_TASKS = 5 if dataset=='Split-MNIST' else 10  # Set the number of tasks
     BATCH_SIZE = 128  # Set batch size
-    EPOCHS_PER_TIMESTEP = 1  # Set number of epochs per timestep
+    EPOCHS_PER_TIMESTEP = 12  # Set number of epochs per timestep
     VAL_FRAC = 0.1
     TEST_FRAC = 0.1
     l2_reg = 0.0  # L2 regularization (Not used in this experiment yet) !!!
