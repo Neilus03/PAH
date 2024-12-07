@@ -624,7 +624,8 @@ def test_evaluate_2d(multitask_model: nn.Module,
                   results_dir="",
                   task_id=0,
                   task_metadata=None,
-                  wandb_run = None
+                  wandb_run = None,
+                  device=None
                  ):
     """
     Evaluates the model on all selected test sets and optionally displays results.
@@ -655,7 +656,7 @@ def test_evaluate_2d(multitask_model: nn.Module,
                                        shuffle=True)
 
         # Evaluate the model on the current task
-        task_test_loss, task_test_acc, task_test_loss_prot, task_test_acc_prot, = evaluate_model_2d(multitask_model, test_loader, task_metadata=task_metadata, task_id=task_id, wandb_run=wandb_run)
+        task_test_loss, task_test_acc, task_test_loss_prot, task_test_acc_prot, = evaluate_model_2d(multitask_model, test_loader, task_metadata=task_metadata, task_id=task_id, wandb_run=wandb_run, device=device)
 
         print(f'{task_metadata[t]}: {task_test_acc:.2%}')
         print(f'{task_metadata[t]} prototypes: {task_test_acc_prot:.2%}')
@@ -782,7 +783,8 @@ def test_evaluate(multitask_model: nn.Module,
                   batch_size=16,
                   results_dir="",
                   task_id=0,
-                  task_metadata=None
+                  task_metadata=None,
+                  device=None
                  ):
     """
     Evaluates the model on all selected test sets and optionally displays results.
@@ -811,7 +813,7 @@ def test_evaluate(multitask_model: nn.Module,
                                        shuffle=True)
 
         # Evaluate the model on the current task
-        task_test_loss, task_test_acc = evaluate_model(multitask_model, test_loader)
+        task_test_loss, task_test_acc = evaluate_model(multitask_model, test_loader, device=device)
 
         if verbose:
             print(f'{task_metadata[t]}: {task_test_acc:.2%}')

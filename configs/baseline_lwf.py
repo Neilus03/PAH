@@ -42,7 +42,7 @@ logging_config = {
     "show_progress": True,  # Whether to show progress bars during training.
     "verbose": True,  # Whether to show detailed logs for each epoch.
     "results_dir": "results",  # Folder to save the results.
-    "name": "LwF_Baseline",  # Name of the experiment.
+    "name": "LwF_Baseline",  # or EWC_Baseline pr SI_Baseline
 }
 
 # 6. Miscellaneous Parameters

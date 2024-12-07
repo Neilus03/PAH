@@ -108,7 +108,7 @@ NUM_TASKS = 10
 EPOCHS_PER_TIMESTEP = 15
 lr     = 1e-4
 l2_reg = 1e-6
-freeze_backbone = False
+freeze_backbone = config['model']['frozen_backbone']
 
 # EWC hyperparameters:
 lambda_ewc = 50.0  # Adjust as needed for regularization strength
@@ -281,7 +281,7 @@ with wandb.init(project='HyperCMTL', name=f'EWC_Baseline-{dataset}-{backbone_nam
                 if show_progress:
                     progress_bar.set_description((f'E{e} loss:{hard_loss:.2f}, acc:{epoch_train_accs[-1]:>5.1%}'))
 
-            avg_val_loss, avg_val_acc = evaluate_model(model, val_loader, loss_fn)
+            avg_val_loss, avg_val_acc = evaluate_model(model, val_loader, loss_fn, device= device)
             wandb.log({'val_loss': avg_val_loss, 'val_accuracy': avg_val_acc, 'epoch': e, 'task_id': t})
 
             metrics['epoch_steps'].append(metrics['steps_trained'])
@@ -310,7 +310,8 @@ with wandb.init(project='HyperCMTL', name=f'EWC_Baseline-{dataset}-{backbone_nam
                                   model_name=f'EWC at t={t}', 
                                   prev_accs=prev_test_accs,
                                   verbose=True,
-                                  task_metadata=task_metadata)
+                                  task_metadata=task_metadata,
+                                  device=device)
         wandb.log({'mean_test_acc': np.mean(test_accs), 'task_id': t})
         prev_test_accs.append(test_accs)
 

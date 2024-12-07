@@ -14,7 +14,7 @@ dataset_config = {
 # ------------------------
 model_config = {
     "backbone": "resnet50",  # Backbone architecture used for the model (e.g., "resnet50", 'efficientnet-b0', etc.).
-    'frozen_backbone': False,  # Whether to freeze the backbone during training.
+    'frozen_backbone': True,  # Whether to freeze the backbone during training.
     "task_head_projection_size": 512,  # The size of the task-specific projection layer.
     "hyper_hidden_features": 256,  # The number of hidden features in the hypernetwork.
     "hyper_hidden_layers": 4,  # The number of hidden layers in the hypernetwork.
