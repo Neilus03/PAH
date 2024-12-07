@@ -49,23 +49,25 @@ import logging
 import pdb
 import random
 
-torch.manual_seed(69)
-np.random.seed(69)
-random.seed(69)
-torch.cuda.manual_seed_all(69)
-torch.cuda.manual_seed(69)
+from config import *
+
+torch.manual_seed(config['misc']['random_seed'])
+np.random.seed(config['misc']['random_seed'])
+random.seed(config['misc']['random_seed'])
+torch.cuda.manual_seed_all(config['misc']['random_seed'])
+torch.cuda.manual_seed(config['misc']['random_seed'])
 
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
 torch.cuda.empty_cache()
 
-device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+device = config['misc']['device'] if torch.cuda.is_available() else 'cpu'
 
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
 TEST_FRAC = 0.1
-BATCH_SIZE = 256
+BATCH_SIZE = config['dataset']['BATCH_SIZE']
 dataset = "Split-MNIST" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
 NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
 
@@ -105,6 +107,8 @@ task_head_projection_size = 512          # Even larger hidden layer in task head
 hyper_hidden_features = 256             # Larger hypernetwork hidden layer size
 hyper_hidden_layers = 4                 # Deeper hypernetwork
 
+freeze_backbone = config['model']['frozen_backbone']    
+
 # Initialize the model with the new configurations
 model = HyperCMTL_seq_simple_2d(
     num_instances=len(task_metadata),
@@ -118,7 +122,7 @@ model = HyperCMTL_seq_simple_2d(
 ).to(device)
 
 # Log the model architecture and configuration
-logger.log(f'Model architecture: {model}')
+#logger.log(f'Model architecture: {model}')
 
 logger.log(f"Model initialized with backbone_config={backbone}, task_head_projection_size={task_head_projection_size}, hyper_hidden_features={hyper_hidden_features}, hyper_hidden_layers={hyper_hidden_layers}")
 
@@ -171,7 +175,9 @@ config = {'EPOCHS_PER_TIMESTEP': EPOCHS_PER_TIMESTEP, 'lr': lr,
           'weight_soft_loss_prototypes': weight_soft_loss_prototypes, 
           'backbone': backbone, 'color' : 'RGB'}
 
-with wandb.init(project='HyperCMTL', name=f'HyperCMTL_seq-learned_emb-{dataset}-{backbone}') as run:
+frozen_backbone = '_frozen' if config['frozen_backbone'] == True else ''
+
+with wandb.init(project='HyperCMTL', name=f'HyperCMTL_seq-learned_emb-{dataset}-{backbone}{frozen_backbone}') as run:
     wandb.config.update(config)
     # wandb.watch(model, log='all', log_freq=100)
 

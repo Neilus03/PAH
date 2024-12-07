@@ -1552,138 +1552,138 @@ def setup_optimizer(model, lr, l2_reg, optimizer):
 
 # Main block to test the setup_dataset_prototype function
 if __name__ == "__main__":
-    # import matplotlib.pyplot as plt
+    import matplotlib.pyplot as plt
 
-    # # Set random seeds for reproducibility
-    # random.seed(69)
-    # np.random.seed(69)
-    # torch.manual_seed(69)
+    # Set random seeds for reproducibility
+    random.seed(31)
+    np.random.seed(31)
+    torch.manual_seed(31)
 
-    # # Parameters for the setup
-    # dataset_name = 'Split-CIFAR100'  # Change as needed: 'Split-MNIST', 'Split-CIFAR100', 'TinyImageNet'
-    # data_dir = './data'              # Ensure this directory exists or change as needed
-    # num_tasks = 10
-    # val_frac = 0.1
-    # test_frac = 0.1
-    # batch_size = 256
+    # Parameters for the setup
+    dataset_name = 'Split-CIFAR100'  # Change as needed: 'Split-MNIST', 'Split-CIFAR100', 'TinyImageNet'
+    data_dir = './data'              # Ensure this directory exists or change as needed
+    num_tasks = 10
+    val_frac = 0.1
+    test_frac = 0.1
+    batch_size = 256
 
-    # # Setup the dataset
-    # print("Setting up the dataset with prototypes...")
-    # dataset_info = setup_dataset_prototype(
-    #     dataset_name=dataset_name,
-    #     data_dir=data_dir,
-    #     num_tasks=num_tasks,
-    #     val_frac=val_frac,
-    #     test_frac=test_frac,
-    #     batch_size=batch_size
-    # )
-    # print("Dataset setup completed.\n")
+    # Setup the dataset
+    print("Setting up the dataset with prototypes...")
+    dataset_info = setup_dataset_prototype(
+        dataset_name=dataset_name,
+        data_dir=data_dir,
+        num_tasks=num_tasks,
+        val_frac=val_frac,
+        test_frac=test_frac,
+        batch_size=batch_size
+    )
+    print("Dataset setup completed.\n")
 
-    # # Accessing the returned dictionary
-    # timestep_tasks = dataset_info['timestep_tasks']
-    # final_test_loader = dataset_info['final_test_loader']
-    # task_metadata = dataset_info['task_metadata']
-    # task_test_sets = dataset_info['task_test_sets']
-    # images_per_class = dataset_info['images_per_class']
-    # timestep_task_classes = dataset_info['timestep_task_classes']
-    # train_prototypes = dataset_info['train_prototype_image_per_class']
-    # prototype_loader = dataset_info['prototype_loader']
-    # task_prototypes = dataset_info['task_prototypes']
-    # prototype_indices = dataset_info['prototype_indices']
+    # Accessing the returned dictionary
+    timestep_tasks = dataset_info['timestep_tasks']
+    final_test_loader = dataset_info['final_test_loader']
+    task_metadata = dataset_info['task_metadata']
+    task_test_sets = dataset_info['task_test_sets']
+    images_per_class = dataset_info['images_per_class']
+    timestep_task_classes = dataset_info['timestep_task_classes']
+    train_prototypes = dataset_info['train_prototype_image_per_class']
+    prototype_loader = dataset_info['prototype_loader']
+    task_prototypes = dataset_info['task_prototypes']
+    prototype_indices = dataset_info['prototype_indices']
 
-    # # Verify prototype_loader
-    # print("Verifying prototype_loader...")
-    # for batch_idx, batch in enumerate(prototype_loader):
-    #     print(f"Batch {batch_idx + 1}:")
-    #     print(f" - Batch shape: {batch.shape}")  # Expected: (prototype_batch_size, C, H, W)
-    #     # Optionally, visualize prototypes in the first batch
-    #     if batch_idx == 0:
-    #         num_prototypes = batch.size(0)
-    #         plt.figure(figsize=(num_prototypes * 2, 2))
-    #         for i in range(num_prototypes):
-    #             img = batch[i]
-    #             # Unnormalize the image for visualization
-    #             if dataset_name == 'Split-MNIST':
-    #                 img = img * 0.5 + 0.5  # Since it was normalized with mean=0.5, std=0.5
-    #                 img = img.squeeze().numpy()
-    #                 plt.subplot(1, num_prototypes, i + 1)
-    #                 plt.imshow(img, cmap='gray')
-    #             elif dataset_name in ['Split-CIFAR100', 'TinyImageNet']:
-    #                 # Adjust unnormalization based on dataset
-    #                 if dataset_name == 'Split-CIFAR100':
-    #                     mean = np.array([0.5, 0.5, 0.5])
-    #                     std = np.array([0.5, 0.5, 0.5])
-    #                 elif dataset_name == 'TinyImageNet':
-    #                     mean = np.array([0.485, 0.456, 0.406])
-    #                     std = np.array([0.229, 0.224, 0.225])
-    #                 img = img.permute(1, 2, 0).numpy()  # Convert from (C, H, W) to (H, W, C)
-    #                 img = (img * std + mean).clip(0, 1)  # Unnormalize and clip
-    #                 plt.subplot(1, num_prototypes, i + 1)
-    #                 plt.imshow(img)
-    #             plt.axis('off')
-    #         plt.suptitle("Prototypes Batch 1")
-    #         plt.show()
-    # print("Prototype_loader verification completed.\n")
+    # Verify prototype_loader
+    print("Verifying prototype_loader...")
+    for batch_idx, batch in enumerate(prototype_loader):
+        print(f"Batch {batch_idx + 1}:")
+        print(f" - Batch shape: {batch.shape}")  # Expected: (prototype_batch_size, C, H, W)
+        # Optionally, visualize prototypes in the first batch
+        if batch_idx == 0:
+            num_prototypes = batch.size(0)
+            plt.figure(figsize=(num_prototypes * 2, 2))
+            for i in range(num_prototypes):
+                img = batch[i]
+                # Unnormalize the image for visualization
+                if dataset_name == 'Split-MNIST':
+                    img = img * 0.5 + 0.5  # Since it was normalized with mean=0.5, std=0.5
+                    img = img.squeeze().numpy()
+                    plt.subplot(1, num_prototypes, i + 1)
+                    plt.imshow(img, cmap='gray')
+                elif dataset_name in ['Split-CIFAR100', 'TinyImageNet']:
+                    # Adjust unnormalization based on dataset
+                    if dataset_name == 'Split-CIFAR100':
+                        mean = np.array([0.5, 0.5, 0.5])
+                        std = np.array([0.5, 0.5, 0.5])
+                    elif dataset_name == 'TinyImageNet':
+                        mean = np.array([0.485, 0.456, 0.406])
+                        std = np.array([0.229, 0.224, 0.225])
+                    img = img.permute(1, 2, 0).numpy()  # Convert from (C, H, W) to (H, W, C)
+                    img = (img * std + mean).clip(0, 1)  # Unnormalize and clip
+                    plt.subplot(1, num_prototypes, i + 1)
+                    plt.imshow(img)
+                plt.axis('off')
+            plt.suptitle("Prototypes Batch 1")
+            plt.show()
+    print("Prototype_loader verification completed.\n")
 
-    # # Verify task_prototypes mapping
-    # print("Verifying task_prototypes mapping...")
-    # for t in range(num_tasks):
-    #     prototypes = task_prototypes[t]
-    #     print(f"Task {t}:")
-    #     print(f" - Number of prototypes: {prototypes.shape[0]}")
-    #     print(f" - Prototype shape: {prototypes.shape[1:]}")
-    #     # Optionally, visualize the first prototype of each task
-    #     if t < 1:  # Change or remove this condition to visualize more tasks
-    #         plt.figure(figsize=(2, 2))
-    #         img = prototypes[0]
-    #         if dataset_name == 'Split-MNIST':
-    #             img = img * 0.5 + 0.5
-    #             img = img.squeeze().numpy()
-    #             plt.imshow(img, cmap='gray')
-    #         elif dataset_name in ['Split-CIFAR100', 'TinyImageNet']:
-    #             if dataset_name == 'Split-CIFAR100':
-    #                 mean = np.array([0.5, 0.5, 0.5])
-    #                 std = np.array([0.5, 0.5, 0.5])
-    #             elif dataset_name == 'TinyImageNet':
-    #                 mean = np.array([0.485, 0.456, 0.406])
-    #                 std = np.array([0.229, 0.224, 0.225])
-    #             img = img.permute(1, 2, 0).numpy()  # Convert from (C, H, W) to (H, W, C)
-    #             img = (img * std + mean).clip(0, 1)  # Unnormalize and clip
-    #             plt.imshow(img)
-    #         plt.title(f"Task {t} Prototype")
-    #         plt.axis('off')
-    #         plt.show()
-    # print("Task_prototypes mapping verification completed.\n")
+    # Verify task_prototypes mapping
+    print("Verifying task_prototypes mapping...")
+    for t in range(num_tasks):
+        prototypes = task_prototypes[t]
+        print(f"Task {t}:")
+        print(f" - Number of prototypes: {prototypes.shape[0]}")
+        print(f" - Prototype shape: {prototypes.shape[1:]}")
+        # Optionally, visualize the first prototype of each task
+        if t < 1:  # Change or remove this condition to visualize more tasks
+            plt.figure(figsize=(2, 2))
+            img = prototypes[0]
+            if dataset_name == 'Split-MNIST':
+                img = img * 0.5 + 0.5
+                img = img.squeeze().numpy()
+                plt.imshow(img, cmap='gray')
+            elif dataset_name in ['Split-CIFAR100', 'TinyImageNet']:
+                if dataset_name == 'Split-CIFAR100':
+                    mean = np.array([0.5, 0.5, 0.5])
+                    std = np.array([0.5, 0.5, 0.5])
+                elif dataset_name == 'TinyImageNet':
+                    mean = np.array([0.485, 0.456, 0.406])
+                    std = np.array([0.229, 0.224, 0.225])
+                img = img.permute(1, 2, 0).numpy()  # Convert from (C, H, W) to (H, W, C)
+                img = (img * std + mean).clip(0, 1)  # Unnormalize and clip
+                plt.imshow(img)
+            plt.title(f"Task {t} Prototype")
+            plt.axis('off')
+            plt.show()
+    print("Task_prototypes mapping verification completed.\n")
 
-    # # Optionally, verify that prototypes are excluded from training data
-    # print("Verifying that prototypes are excluded from training data...")
-    # all_train_indices = set()
-    # for t, (train_set, val_set) in timestep_tasks.items():
-    #     # Extract the original indices from the train_set
-    #     # Note: random_split creates Subset objects with subset.indices
-    #     subset = train_set
-    #     if isinstance(subset, Subset):
-    #         subset_indices = subset.indices
-    #     else:
-    #         subset_indices = []
-    #     all_train_indices.update(subset_indices)
+    # Optionally, verify that prototypes are excluded from training data
+    print("Verifying that prototypes are excluded from training data...")
+    all_train_indices = set()
+    for t, (train_set, val_set) in timestep_tasks.items():
+        # Extract the original indices from the train_set
+        # Note: random_split creates Subset objects with subset.indices
+        subset = train_set
+        if isinstance(subset, Subset):
+            subset_indices = subset.indices
+        else:
+            subset_indices = []
+        all_train_indices.update(subset_indices)
 
-    # # Check that none of the prototype indices are in the training indices
-    # intersection = all_train_indices.intersection(prototype_indices)
-    # if len(intersection) == 0:
-    #     print("Success: No prototype indices found in the training data.")
-    # else:
-    #     print(f"Error: Found {len(intersection)} prototype indices in the training data.")
-    # print("Verification of prototype exclusion completed.\n")
+    # Check that none of the prototype indices are in the training indices
+    intersection = all_train_indices.intersection(prototype_indices)
+    if len(intersection) == 0:
+        print("Success: No prototype indices found in the training data.")
+    else:
+        print(f"Error: Found {len(intersection)} prototype indices in the training data.")
+    print("Verification of prototype exclusion completed.\n")
 
-    # # Summary of tasks and prototypes
-    # print("Summary of tasks and prototypes:")
-    # for t in range(num_tasks):
-    #     classes = timestep_task_classes[t]
-    #     num_classes_task = len(classes)
-    #     print(f"Task {t}: {num_classes_task} classes")
-    #     # Optionally, list class names or indices
-    #     class_names = [task_metadata[t][idx] for idx in range(num_classes_task)]
-    #     print(f" - Classes: {class_names}\n")
+    # Summary of tasks and prototypes
+    print("Summary of tasks and prototypes:")
+    for t in range(num_tasks):
+        classes = timestep_task_classes[t]
+        num_classes_task = len(classes)
+        print(f"Task {t}: {num_classes_task} classes")
+        # Optionally, list class names or indices
+        class_names = [task_metadata[t][idx] for idx in range(num_classes_task)]
+        print(f" - Classes: {class_names}\n")
 
     print("All verifications completed successfully.")

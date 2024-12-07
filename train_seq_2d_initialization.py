@@ -51,11 +51,18 @@ import time
 import logging
 import pdb
 
-torch.manual_seed(0)
+from config import config
+
+torch.manual_seed(config['misc']['random_seed'])
+np.random.seed(config['misc']['random_seed'])
+random.seed(config['misc']['random_seed'])
+torch.cuda.manual_seed_all(config['misc']['random_seed'])
+torch.cuda.manual_seed(config['misc']['random_seed'])
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 torch.cuda.empty_cache()
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
@@ -120,6 +127,7 @@ hyper_hidden_layers = 4                 # Deeper hypernetwork
 model = HyperCMTL_seq_simple_2d(
     num_instances=len(task_metadata),
     backbone=backbone,
+    frozen_backbone=config['model']['frozen_backbone'],
     task_head_projection_size=task_head_projection_size,
     task_head_num_classes=len(task_metadata[0]),
     hyper_hidden_features=hyper_hidden_features,
@@ -147,7 +155,7 @@ plt.close()
 model.initialize_embeddings(prototypes_inititalization.to(device))
 
 # Log the model architecture and configuration
-logger.log(f'Model architecture: {model}')
+# logger.log(f'Model architecture: {model}')
 
 logger.log(f"Model initialized with backbone_config={backbone}, task_head_projection_size={task_head_projection_size}, hyper_hidden_features={hyper_hidden_features}, hyper_hidden_layers={hyper_hidden_layers}")
 
@@ -200,7 +208,10 @@ config = {'EPOCHS_PER_TIMESTEP': EPOCHS_PER_TIMESTEP, 'lr': lr,
           'weight_soft_loss_prototypes': weight_soft_loss_prototypes, 
           'backbone': backbone, 'color' : 'RGB'}
 
-with wandb.init(project='HyperCMTL', name=f'HyperCMTL_seq-learned_emb-{dataset}-{backbone}') as run:
+
+frozen_backbone = 'frozen' if model.frozen_backbone else ''
+
+with wandb.init(project='HyperCMTL', name=f'HyperCMTL_seq-learned_emb-{dataset}-{backbone}{frozen_backbone}') as run:
     wandb.config.update(config)
     wandb.watch(model, log='all', log_freq=100)
     wandb.log({"all prototypes": wandb.Image(results_dir + '/prototypes.png')})

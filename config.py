@@ -5,7 +5,7 @@
 dataset_config = {
     "dataset": "Split-CIFAR100",  # Dataset used for training. You can switch to "Split-MNIST" or other datasets.
     "NUM_TASKS": 10,  # Number of tasks for the dataset. Typically 5 for Split-MNIST and 10 for Split-CIFAR100.
-    "BATCH_SIZE": 128,  # Batch size used during training.
+    "BATCH_SIZE": 256,  # Batch size used during training.
     "VAL_FRAC": 0.1,  # Fraction of the dataset to be used for validation.
     "TEST_FRAC": 0.1,  # Fraction of the dataset to be used for testing.
 }
@@ -13,7 +13,8 @@ dataset_config = {
 # 2. Model Hyperparameters
 # ------------------------
 model_config = {
-    "backbone": "resnet50",  # Backbone architecture used for the model (e.g., "resnet50").
+    "backbone": "resnet50",  # Backbone architecture used for the model (e.g., "resnet50", 'efficientnet-b0', etc.).
+    'frozen_backbone': False,  # Whether to freeze the backbone during training.
     "task_head_projection_size": 512,  # The size of the task-specific projection layer.
     "hyper_hidden_features": 256,  # The number of hidden features in the hypernetwork.
     "hyper_hidden_layers": 4,  # The number of hidden layers in the hypernetwork.
@@ -51,9 +52,10 @@ logging_config = {
 # 6. Miscellaneous Parameters
 # ---------------------------
 misc_config = {
-    "device": "cuda:4",  # Device for training (use "cpu" if no GPU is available).
+    "device": "cuda:1",  # Device for training (use "cpu" if no GPU is available).
     "results_dir": "results",  # Directory to store results.
     "wandb_project": "HyperCMTL",  # The name of the WandB project to track experiments.
+    'random_seed': 49,  # Random seed for reproducibility.
 }
 
 # 7. Evaluation Parameters
