@@ -36,7 +36,7 @@ def objective(trial):
     stability = trial.suggest_float('stability', 0.0, 5.0)  # Stability parameter for soft loss
     task_head_projection_size = trial.suggest_int('task_head_projection_size', 128, 1024, step=128)  # Task head size
     hyper_hidden_features = trial.suggest_int('hyper_hidden_features', 128, 512, step=64)  # Hypernetwork hidden features
-    hyper_hidden_layers = trial.suggest_int('hyper_hidden_layers', 2, 6)  # Hypernetwork layers
+    hyper_hidden_layers = trial.suggest_int('hyper_hidden_layers', 6, 12)  # Hypernetwork layers
 
     # Dataset and training setup
     dataset = "Split-CIFAR100"  # Set your dataset between "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"

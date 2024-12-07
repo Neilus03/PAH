@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models import resnet50, mobilenet_v2
-import timm  # For EfficientNet and other models
-from timm import create_model  # For ViT and other models from the "timm" library
+# import timm  # For EfficientNet and other models
+# from timm import create_model  # For ViT and other models from the "timm" library
 
 
 class ResNet50(nn.Module):
