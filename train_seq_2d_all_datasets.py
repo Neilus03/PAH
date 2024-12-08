@@ -35,7 +35,7 @@ import os
 from utils import inspect_batch, test_evaluate, training_plot, setup_dataset, inspect_task, distillation_output_loss, evaluate_model, get_batch_acc, logger, evaluate_model_2d, test_evaluate_2d
 
 # Import the HyperCMTL_seq model architecture
-from hypernetwork import HyperCMTL_seq, HyperCMTL_seq_simple_2d_color, HyperCMTL_seq_simple_2d
+from networks.hypernetwork import HyperCMTL_seq, HyperCMTL_seq_simple_2d_color, HyperCMTL_seq_simple_2d
 
 # Import the wandb library for logging metrics and visualizations
 import wandb

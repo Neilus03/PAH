@@ -5,11 +5,11 @@ from torchvision.models import resnet50
 import numpy as np
 
 from torchmeta.modules import MetaSequential, MetaLinear
-from metamodules import FCBlock, BatchLinear, HyperNetwork, get_subdict, HyperNetwork_seq
+from networks.metamodules import FCBlock, BatchLinear, HyperNetwork, get_subdict, HyperNetwork_seq
 from torchmeta.modules import MetaModule
 from copy import deepcopy
 
-from backbones import ResNet50, MobileNetV2, EfficientNetB0
+from networks.backbones import ResNet50, MobileNetV2, EfficientNetB0
 import random
 from config import config
 

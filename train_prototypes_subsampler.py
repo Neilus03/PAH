@@ -35,7 +35,7 @@ import os
 from utils import MinimumSubsetBatchSampler,inspect_batch, test_evaluate, test_evaluate_prototypes, training_plot, setup_dataset, inspect_task, distillation_output_loss, evaluate_model, evaluate_model_prototypes, get_batch_acc, logger
 
 # Import the HyperCMTL model architecture
-from hypernetwork import HyperCMTL, HyperCMTL_prototype
+from networks.hypernetwork import HyperCMTL, HyperCMTL_prototype
 
 # Import the wandb library for logging metrics and visualizations
 import wandb
