@@ -38,7 +38,7 @@ from utils import inspect_batch, test_evaluate, training_plot, setup_dataset, in
 from utils import *
 
 # Import the HyperCMTL_seq model architecture
-from hypernetwork import HyperCMTL_seq, HyperCMTL_seq_simple_2d
+from networks.hypernetwork import HyperCMTL_seq, HyperCMTL_seq_simple_2d
 
 # Import the wandb library for logging metrics and visualizations
 import wandb

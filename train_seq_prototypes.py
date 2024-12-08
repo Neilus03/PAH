@@ -38,7 +38,7 @@ from utils import (
 )
 
 # Import the HyperCMTL_seq model architecture
-from hypernetwork import HyperCMTL_seq, HyperCMTL_seq_simple, HyperCMTL_seq_prototype_simple
+from networks.hypernetwork import HyperCMTL_seq, HyperCMTL_seq_simple, HyperCMTL_seq_prototype_simple
 
 # Import the wandb library for logging metrics and visualizations
 import wandb

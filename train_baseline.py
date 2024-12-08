@@ -33,7 +33,7 @@ import os
 
 # Functions from utils to help with training and evaluation
 from utils import *
-from networks_baseline import *
+from networks.networks_baseline import *
 
 # Import the wandb library for logging metrics and visualizations
 import wandb
@@ -48,7 +48,7 @@ import pdb
 
 import random
 from torch.utils.data import Sampler
-from backbones import ResNet50, MobileNetV2, EfficientNetB0
+from networks.backbones import ResNet50, MobileNetV2, EfficientNetB0
 
 config = config_load('./configs/baseline.py')
 seed_everything(config['misc_config']['seed'])
@@ -168,11 +168,8 @@ def count_optimizer_parameters(optimizer: torch.optim.Optimizer) -> None:
     print("===================================\n")
 
 
-with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config) as run:
-    #wandb.watch(baseline_lwf_model, log='all', log_freq=100)
+with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config, group=config['logging_config']['name']) as run:
 
-    # count_optimizer_parameters(opt)
-    # outer loop over each task, in sequence
     for t, (task_train, task_val) in timestep_tasks.items():
         task_train.num_classes = len(timestep_task_classes[t])
         # print(f'task_train.num_classes: {task_train.num_classes}')
