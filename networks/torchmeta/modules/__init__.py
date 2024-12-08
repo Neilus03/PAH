@@ -1,6 +1,6 @@
-from torchmeta.modules.container import MetaSequential
-from torchmeta.modules.linear import MetaLinear, MetaBilinear
-from torchmeta.modules.module import MetaModule
+from networks.torchmeta.modules.container import MetaSequential
+from networks.torchmeta.modules.linear import MetaLinear, MetaBilinear
+from networks.torchmeta.modules.module import MetaModule
 
 __all__ = [
     'MetaSequential',

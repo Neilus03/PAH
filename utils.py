@@ -388,8 +388,8 @@ def evaluate_model_timed(multitask_model: nn.Module,  # trained model capable of
 
 def evaluate_model_2d(multitask_model: nn.Module,  # trained model capable of multi-task classification
                    val_loader: utils.data.DataLoader,  # task-specific data to evaluate on
+                   device, 
                    loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
-                   device = None, 
                    task_metadata = None,
                    task_id = 0,
                    wandb_run = None
@@ -409,7 +409,7 @@ def evaluate_model_2d(multitask_model: nn.Module,  # trained model capable of mu
         batch_val_losses, batch_val_accs = [], []
         batch_val_losses_prototypes, batch_val_accs_prototypes = [], []
 
-        '''fig, ax = plt.subplots(len(task_metadata[int(task_id)]), 1, figsize=(10, 10))
+        fig, ax = plt.subplots(len(task_metadata[int(task_id)]), 1, figsize=(10, 10))
         ax = ax.flatten()
         prototypes = multitask_model.get_prototypes(task_id)
         for i in range(len(task_metadata[int(task_id)])):
@@ -418,15 +418,19 @@ def evaluate_model_2d(multitask_model: nn.Module,  # trained model capable of mu
         file_name = f'prototypes_{int(task_id)}_{wandb_run}.png'
         plt.savefig(file_name)
         wandb.log({f'prototypes_{int(task_id)}': wandb.Image(file_name), 'task': task_id})
-        plt.close()'''
+        plt.close()
 
+        time_inf = []
         # Iterate over all batches in the validation DataLoader
         for batch in val_loader:
             vx, vy, task_ids = batch
             vx, vy = vx.to(device), vy.to(device)
 
+            start_time = time.time()
+
             # Forward pass with task-specific parameters
             vpred, vpred_prototypes = multitask_model(vx, task_ids[0])
+            time_inf.append(time.time() - start_time)
 
             # Calculate loss and accuracy for the batch
             val_loss = loss_fn(vpred, vy)
@@ -443,7 +447,7 @@ def evaluate_model_2d(multitask_model: nn.Module,  # trained model capable of mu
             batch_val_accs_prototypes.append(val_acc_prototypes)
 
     # Return average loss and accuracy across all batches
-    return np.mean(batch_val_losses), np.mean(batch_val_accs) , np.mean(batch_val_losses_prototypes), np.mean(batch_val_accs_prototypes)
+    return np.mean(batch_val_losses), np.mean(batch_val_accs) , np.mean(batch_val_losses_prototypes), np.mean(batch_val_accs_prototypes), np.mean(time_inf)
 
 
 def evaluate_model_prototypes(multitask_model: nn.Module,  # trained model capable of multi-task classification
@@ -499,6 +503,7 @@ def test_evaluate_prototypes(multitask_model: nn.Module,
                   selected_test_sets,  
                   task_test_sets, 
                   task_prototypes,  # Added argument
+                  device,
                   prev_accs = None,
                   show_taskwise_accuracy=True, 
                   baseline_taskwise_accs = None, 
@@ -509,7 +514,6 @@ def test_evaluate_prototypes(multitask_model: nn.Module,
                   task_metadata=None,
                   task_id=0,
                   loss_fn=nn.CrossEntropyLoss(),
-                  device=None
                  ):
     """
     Evaluates the model on all selected test sets and optionally displays results.
@@ -614,8 +618,9 @@ def test_evaluate_prototypes(multitask_model: nn.Module,
 def test_evaluate_2d(multitask_model: nn.Module, 
                   selected_test_sets,  
                   task_test_sets, 
-                  prev_accs = None,
-                  prev_accs_prot = None,
+                  device,
+                  prev_accs,
+                  prev_accs_prot,
                   show_taskwise_accuracy=True, 
                   baseline_taskwise_accs = None, 
                   model_name: str='', 
@@ -625,7 +630,6 @@ def test_evaluate_2d(multitask_model: nn.Module,
                   task_id=0,
                   task_metadata=None,
                   wandb_run = None,
-                  device=None
                  ):
     """
     Evaluates the model on all selected test sets and optionally displays results.
@@ -640,13 +644,13 @@ def test_evaluate_2d(multitask_model: nn.Module,
     Returns:
         list[float]: Taskwise accuracies for the selected test sets.
     """
-    if verbose:
-        print(f'{model_name} evaluation on test set of all tasks:'.capitalize())
+    metrics = {}
+    
+    print(f'{model_name} evaluation on test set of all tasks:'.capitalize())
 
-    task_test_losses = []
     task_test_accs = []
-    task_test_losses_prot = []
     task_test_accs_prot = []
+    task_test_times = []
 
     # Iterate over each task's test dataset
     for t, test_data in enumerate(selected_test_sets):
@@ -656,39 +660,38 @@ def test_evaluate_2d(multitask_model: nn.Module,
                                        shuffle=True)
 
         # Evaluate the model on the current task
-        task_test_loss, task_test_acc, task_test_loss_prot, task_test_acc_prot, = evaluate_model_2d(multitask_model, test_loader, task_metadata=task_metadata, task_id=task_id, wandb_run=wandb_run, device=device)
+        task_test_loss, task_test_acc, task_test_loss_prot, task_test_acc_prot, time = evaluate_model_2d(multitask_model, test_loader, task_metadata=task_metadata, task_id=task_id, wandb_run=wandb_run, device=device)
 
-        print(f'{task_metadata[t]}: {task_test_acc:.2%}')
-        print(f'{task_metadata[t]} prototypes: {task_test_acc_prot:.2%}')
+        print(f'{task_metadata[t]}: {task_test_acc:.2%}, prototypes acc: {task_test_acc_prot:.2%} in {time:.2f} s')
 
-        task_test_losses.append(task_test_loss)
         task_test_accs.append(task_test_acc)
-
-        task_test_losses_prot.append(task_test_loss_prot)
         task_test_accs_prot.append(task_test_acc_prot)
+        task_test_times.append(time)
 
-    # Calculate average test loss and accuracy across all tasks
-    avg_task_test_acc = np.mean(task_test_accs)
+    metrics['task_test_accs'] = task_test_accs        
+    AA = np.mean(task_test_accs)
+    metrics['AA'] = AA
     
-    # # Calculate the forgetting metric
-    # if prev_accs is not None:
-    #     forgetting = [prev - acc for prev, acc in zip(prev_accs, task_test_accs)]
-    #     avg_forgetting = np.mean(forgetting)
-    #     print(f'Average forgetting: {avg_forgetting:.2})')
-        
-    # # Calculate the Forward Transfer metric
-    # if prev_accs is not None:
-    #     forward_transfer = [acc / prev for prev, acc in zip(prev_accs, task_test_accs)]
-    #     avg_forward_transfer = np.mean(forward_transfer)
-    #     print(f'Average forward transfer: {avg_forward_transfer:.2})')
+    metrics['task_test_accs_prot'] = task_test_accs_prot
+    AA_prot = np.mean(task_test_accs_prot)
+    metrics['AA_prot'] = AA_prot
     
+    if t > 0:
+        FM, BWT = compute_FM_BWT(task_test_accs, prev_accs)
+        metrics['FM'] = FM
+        metrics['BWT'] = BWT
+    else:
+        FM = 0
+        BWT = 0
+        metrics['FM'] = FM
+        metrics['BWT'] = BWT
     
-    if verbose:
-        print(f'\n +++ AVERAGE TASK TEST ACCURACY: {avg_task_test_acc:.2%} +++ ')
+    Num_params = sum(p.numel() for p in multitask_model.parameters())
+    Time_inf = np.mean(task_test_times)
+    metrics['Num_params'] = Num_params
+    metrics['Time_inf'] = Time_inf
     
-    # # Log the Forgetting and Backward Transfer metrics to wandb
-    # wandb.log({f'average forgetting': avg_forgetting, 'task': task_id})
-    # wandb.log({f'taskwise accuracy': avg_task_test_acc, 'task': task_id})
+    print(f'\n +++ AA: {AA:.2%}, AA_prot: {AA_prot:.2%}}, FM: {FM:.2%}, BWT: {BWT:.2%}, Num_params: {Num_params}, Time_inf: {Time_inf:.2f} +++ ')
 
     # Plot taskwise accuracy if enabled
     bar_heights = task_test_accs + [0]*(len(task_test_sets) - len(selected_test_sets))
@@ -696,8 +699,8 @@ def test_evaluate_2d(multitask_model: nn.Module,
 
     plt.xticks(range(len(task_test_sets)), [','.join(task_classes.values()) for t, task_classes in task_metadata.items()], rotation='vertical')
 
-    plt.axhline(avg_task_test_acc, c=[0.4]*3, linestyle=':')
-    plt.text(0, avg_task_test_acc+0.002, f'{model_name} (average)', c=[0.4]*3, size=8)
+    plt.axhline(AA, c=[0.4]*3, linestyle=':')
+    plt.text(0, AA+0.002, f'{model_name} (average)', c=[0.4]*3, size=8)
 
     if prev_accs is not None:
         for p, prev_acc_list in enumerate(prev_accs):
@@ -714,8 +717,7 @@ def test_evaluate_2d(multitask_model: nn.Module,
 
     plt.close()
 
-    avg_task_test_acc = np.mean(task_test_accs_prot)
-    print(f'\n +++ AVERAGE TASK TEST ACCURACY PROTOTYPES: {avg_task_test_acc:.2%} +++ ')
+    print(f'\n +++ AVERAGE TASK TEST ACCURACY PROTOTYPES: {AA:.2%} +++ ')
 
     # Plot taskwise accuracy if enabled
     bar_heights = task_test_accs_prot + [0]*(len(task_test_sets) - len(selected_test_sets))
@@ -723,7 +725,7 @@ def test_evaluate_2d(multitask_model: nn.Module,
 
     plt.xticks(range(len(task_test_sets)), [','.join(task_classes.values()) for t, task_classes in task_metadata.items()], rotation='vertical')
 
-    plt.axhline(avg_task_test_acc, c=[0.4]*3, linestyle=':')
+    plt.axhline(AA_prot, c=[0.4]*3, linestyle=':')
 
     for p, prev_acc_list in enumerate(prev_accs_prot):
         plt.bar(x = range(len(prev_acc_list)), height=prev_acc_list, fc='tab:red', zorder=0, alpha=0.5*((p+1)/len(prev_accs)))
@@ -738,7 +740,7 @@ def test_evaluate_2d(multitask_model: nn.Module,
 
     plt.close()
 
-    return task_test_accs, task_test_accs_prot
+    return metrics
 
 
 def compute_FM_BWT(task_test_accs, prev_accs):
@@ -1536,7 +1538,7 @@ def config_load(filename) -> EasyDict:
 	return res
         
 
-def setup_optimizer(model, lr, l2_reg, optimizer):
+def setup_optimizer(parameters, lr, l2_reg, optimizer):
     if optimizer == "Adam":
         return torch.optim.Adam(model.parameters(), lr=lr, weight_decay=l2_reg)
     elif optimizer == "SGD":
@@ -1569,6 +1571,23 @@ def count_optimizer_parameters(optimizer: torch.optim.Optimizer, logger=None) ->
     
     logger.log(f"Total Optimized Parameters: {total_params} ({sum(p.numel() for p in unique_params)} unique)")
     logger.log("===================================\n")
+     
+     
+
+class TotalVariationLoss(nn.Module):
+    def __init__(self):
+        super(TotalVariationLoss, self).__init__()
+
+    def forward(self, x):
+        # Compute differences between adjacent pixels
+        diff_h = torch.abs(x[:, :, 1:, :] - x[:, :, :-1, :])  # Horizontal differences
+        diff_w = torch.abs(x[:, :, :, 1:] - x[:, :, :, :-1])  # Vertical differences
+        
+        # Sum over all dimensions
+        tv_loss = diff_h.mean() + diff_w.mean()
+        return tv_loss     
+     
+     
      
 #-----------------------------------------------------------------#
 #----------------------utils.py-----------------------------------#

@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from torchmeta.modules.module import MetaModule
+from networks.torchmeta.modules.module import MetaModule
 
 
 class MetaSequential(nn.Sequential, MetaModule):

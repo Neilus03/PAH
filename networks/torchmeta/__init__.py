@@ -1,2 +1,2 @@
-from torchmeta import modules
-from torchmeta.version import VERSION as __version__
+from networks.torchmeta import modules
+from networks.torchmeta.version import VERSION as __version__

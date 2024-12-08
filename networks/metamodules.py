@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from torchmeta.modules import MetaModule, MetaSequential
+from networks.torchmeta.modules import MetaModule, MetaSequential
 import torch
 import re
 import torch.nn as nn
