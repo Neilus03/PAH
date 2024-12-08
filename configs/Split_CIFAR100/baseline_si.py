@@ -3,7 +3,7 @@
 import sys
 import os
 # Add the root of the project 
-root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+root = os.path.dirname(os.path.abspath(__file__))
 
 # 1. Dataset Parameters
 # ----------------------
