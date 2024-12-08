@@ -3,7 +3,7 @@
 import sys
 import os
 # Add the root of the project 
-root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+root = os.path.dirname(os.path.abspath(__file__))
 
 # 1. Dataset Parameters
 # ----------------------
@@ -58,7 +58,7 @@ training_config = {
 # 5. Logging and Visualization Parameters
 # ---------------------------------------
 frozen = "frozen" if model_config["frozen_backbone"] else ""
-name = f"Hyper2d_i-{frozen}-{model_config['backbone']}-{dataset_config['dataset']}"
+name = f"Hyper2d_i-{frozen}-{model_config['backbone']}-{dataset_config['dataset']}-initialized={model_config['initialize_prot_w_images']}"
 logging_config = {
     "log_file": "training.log",  # Log file where training information will be saved.
     "log_level": "INFO",  # Logging level for the training process (can be INFO, DEBUG, etc.).

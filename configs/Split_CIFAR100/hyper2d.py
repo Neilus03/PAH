@@ -3,7 +3,7 @@
 import sys
 import os
 # Add the root of the project 
-root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+root = os.path.dirname(os.path.abspath(__file__))
 
 # 1. Dataset Parameters
 # ----------------------
@@ -33,7 +33,7 @@ model_config = {
     "backbone": "resnet50",  # Backbone architecture used for the model (e.g., "resnet50").
     "hyper_hidden_features": 1024,
     "hyper_hidden_layers": 6,
-    "frozen_backbone": True,  # Whether to freeze the backbone during training.
+    "frozen_backbone": False,  # Whether to freeze the backbone during training.
     "prototypes_channels": 1, # Number of channels of prototypes 1 for grayscale, 3 for RGB
     "prototypes_size": 20,  # Size of the prototypes.
     "initialize_prot_w_images": False,
