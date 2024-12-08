@@ -139,7 +139,7 @@ prev_test_accs_prot = []
 
 logger.log(f"Starting training for {config['logging']['name']}")
 
-with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config) as run:
+with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config, group=config['logging']['group']) as run:
     if config['model']['initialize_prot_w_images']:
         wandb.log({"all prototypes": wandb.Image(results_dir + '/prototypes.png')})
 

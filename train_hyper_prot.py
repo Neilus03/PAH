@@ -121,7 +121,7 @@ metrics = {
 prev_test_accs = []
 logger.log(f"Starting training for {config['logging']['name']}")
 
-with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config) as run:
+with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config, group=config['logging']['group']) as run:
 
     # Outer loop over each task, in sequence
     for t, (task_train, task_val) in data['timestep_tasks'].items():

@@ -22,6 +22,7 @@ from torch.utils.data import Sampler
 import time
 import os
 from easydict import EasyDict 
+from time import sleep
 
 
 def inspect_batch(images, labels=None, predictions=None, class_names=None, title=None,
@@ -994,6 +995,7 @@ def test_evaluate_metrics(multitask_model: nn.Module,
         # Save figure to wandb
         file_path = os.path.join(results_dir, f'taskwise_accuracy_task_{task_id}.png')
         plt.savefig(file_path)
+        sleep(1)
         img = Image.open(file_path)
         wandb.log({f'taskwise accuracy': wandb.Image(img), 'task': task_id})
 
