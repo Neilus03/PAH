@@ -419,116 +419,78 @@ class HyperCMTL_seq_simple(nn.Module):
         hyper_emb (nn.Embedding): Task-specific embeddings used as input to the hypernetwork.
     """
     def __init__(self,
-                 device,
-                 num_instances=1,
-                 backbone='resnet50',  # Backbone architecture
-                 task_head_projection_size=64,             # Task head hidden layer size
-                 task_head_num_classes=2,                  # Task head output size
-                 hyper_hidden_features=256,                # Hypernetwork hidden layer size
-                 hyper_hidden_layers=2,                    # Hypernetwork number of layers
-                 channels=1,
-                 img_size=[32, 32],
-                 std=0.01):
+                 num_tasks,
+                 num_classes_per_task,
+                 model_config,
+                 device):
         super().__init__()
 
-        self.num_instances = num_instances
-        self.backbone_name = backbone
-        self.task_head_projection_size = task_head_projection_size
-        self.task_head_num_classes = task_head_num_classes
-        self.hyper_hidden_features = hyper_hidden_features
-        self.hyper_hidden_layers = hyper_hidden_layers
+        self.num_tasks = num_tasks
+        self.backbone_name = model_config["backbone"]
+        self.frozen_backbone = model_config["frozen_backbone"]
+        self.num_classes_per_task = num_classes_per_task
+        self.hyper_hidden_features = model_config["hyper_hidden_features"]
+        self.hyper_hidden_layers = model_config["hyper_hidden_layers"]
         self.device = device
-        self.channels = channels
-        self.img_size = img_size
-        self.std = std
+        self.emb_size = model_config["emb_size"]
+        self.mean_initialization_emb = model_config["mean_initialization_emb"]
+        self.std_initialization_emb = model_config["std_initialization_emb"]
+        self.model_config = model_config
+        self.lrs = model_config["lr_config"]
 
         # Backbone
-        '''self.backbone = ConvBackbone(layers=backbone_layers,
-                                     input_size=(channels, img_size[0], img_size[1]),
-                                     device=device)
-        '''
-        if backbone in backbone_dict:
+        if self.backbone_name in backbone_dict:
             self.backbone = backbone_dict[self.backbone_name](device=device, pretrained=True)
         else: 
-            raise ValueError(f"Backbone {backbone} is not supported.")
+            raise ValueError(f"Backbone {self.backbone_name} is not supported.")
         
-
-        # freeze the backbone 
-        # for param in self.backbone.parameters():
-        #     param.requires_grad = False
+        if self.frozen_backbone:
+            for param in self.backbone.parameters():
+                param.requires_grad = False
 
         # Task head
         self.task_head = TaskHead_simple(input_size=self.backbone.num_features,
-                                  projection_size=task_head_projection_size,
-                                  num_classes=task_head_num_classes,
-                                  dropout=0.5,
-                                  device=device)
+                                        num_classes=self.num_classes_per_task,
+                                        device=device)
 
         # Hypernetwork
-        self.backbone_emb_size = self.backbone.num_features
-        self.hyper_emb = nn.Embedding(self.num_instances, 4096)
-        nn.init.normal_(self.hyper_emb.weight, mean=0, std=std)
-        
-
+        self.hyper_emb = nn.Embedding(self.num_tasks, self.emb_size)
+        nn.init.normal_(self.hyper_emb.weight, mean=self.mean_initialization_emb, std=self.std_initialization_emb)
         
         self.hn_in = 4096
-        self.hypernet = HyperNetwork_seq(hyper_in_features=self.hn_in,
-                                     hyper_hidden_layers=6,
-                                     hyper_hidden_features=1024,
-                                     hypo_module=self.task_head,
-                                     activation='relu')
+        self.hypernet = HyperNetwork_seq(hyper_in_features=self.emb_size,
+                                     hyper_hidden_layers=self.hyper_hidden_layers,
+                                     hyper_hidden_features=self.hyper_hidden_features,
+                                     hypo_module=self.task_head)
 
-
-
-        # self.reduce_backbone = nn.Linear(2048, 256)
         
     def get_params(self, task_idx, backbone_out):
         z = self.hyper_emb(torch.LongTensor([task_idx]).to(self.device))
-
-        # z = z.repeat(backbone_out.size(0), 1)
-        # # print("z", z.size())
-
-        # backbone_out = torch.mean(self.reduce_backbone(backbone_out), dim=0).unsqueeze(0)
-        # backbone_out = torch.mean(backbone_out, dim=0).unsqueeze(0)
-        # input_hyp = torch.cat((z, backbone_out), dim=1)
-        # # print("input_hyp", input_hyp.size())
         return self.hypernet(z)
 
 
     def forward(self, support_set, task_idx, **kwargs):
-        # # print("after get params", params)
         backbone_out = self.backbone(support_set)
-        # # print("backbone_out", backbone_out.size())
         params = self.get_params(task_idx, backbone_out)
-        # # print("backbone_out", backbone_out.size())
         task_head_out = self.task_head(backbone_out, params=params)
         
-        # # print("task_head_out", task_head_out.size())
         return task_head_out.squeeze(0)
     
     def deepcopy(self):
-        new_model = HyperCMTL_seq_simple(num_instances=self.num_instances,
-                    backbone=self.backbone_name,
-                    task_head_projection_size=self.task_head_projection_size,
-                    task_head_num_classes=self.task_head_num_classes,
-                    hyper_hidden_features=self.hyper_hidden_features,
-                    hyper_hidden_layers=self.hyper_hidden_layers,
-                    device=self.device,
-                    channels=self.channels,
-                    img_size=self.img_size, 
-                    std=self.std)
+        new_model = HyperCMTL_seq_simple(num_tasks=self.num_tasks,
+                    num_classes_per_task=self.num_classes_per_task,
+                    model_config=self.model_config,
+                    device=self.device)
+        
         new_model.load_state_dict(self.state_dict())
         return new_model.to(device=self.device)
     
     def get_optimizer_list(self):
-        # networks = [self.backbone, self.task_head, self.hypernet, self.hyper_emb]
         optimizer_list = []
-        optimizer_list.append({'params': self.hyper_emb.parameters(), 'lr': 1e-3})
-        # optimizer_list.append({'params': self.reduce_backbone.parameters(), 'lr': 1e-3})
-        optimizer_list.extend(self.hypernet.get_optimizer_list())
-        optimizer_list.extend(self.backbone.get_optimizer_list())
-        optimizer_list.extend(self.task_head.get_optimizer_list())
-        # print("optimizer_list", optimizer_list)
+        optimizer_list.append({'params': self.hyper_emb.parameters(), 'lr': self.lrs["hyper_emb"], "weight_decay ": self.lrs["hyper_emb_reg"]})
+        optimizer_list.append({'params': self.backbone.parameters(), 'lr': self.lrs["backbone"], "weight_decay ": self.lrs["backbone_reg"]})
+        optimizer_list.append({'params': self.task_head.parameters(), 'lr': self.lrs["task_head"], "weight_decay ": self.lrs["task_head_reg"]})
+        optimizer_list.append({'params': self.hypernet.parameters(), 'lr': self.lrs["hypernet"], "weight_decay ": self.lrs["hypernet_reg"]})
         return optimizer_list
 
 

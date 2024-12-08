@@ -691,7 +691,7 @@ def test_evaluate_2d(multitask_model: nn.Module,
     metrics['Num_params'] = Num_params
     metrics['Time_inf'] = Time_inf
     
-    print(f'\n +++ AA: {AA:.2%}, AA_prot: {AA_prot:.2%}}, FM: {FM:.2%}, BWT: {BWT:.2%}, Num_params: {Num_params}, Time_inf: {Time_inf:.2f} +++ ')
+    print(f'\n +++ AA: {AA:.2%}, AA_prot: {AA_prot:.2%}, FM: {FM:.2%}, BWT: {BWT:.2%}, Num_params: {Num_params}, Time_inf: {Time_inf:.2f} +++ ')
 
     # Plot taskwise accuracy if enabled
     bar_heights = task_test_accs + [0]*(len(task_test_sets) - len(selected_test_sets))

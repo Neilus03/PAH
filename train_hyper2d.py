@@ -102,20 +102,23 @@ model = HyperCMTL_seq_simple_2d(
 logger.log(f"Model created!")
 logger.log(f"Model initialized with freeze_backbone={config['model']['frozen_backbone']}, config={config['model']}")
 
-prototypes_inititalization = torch.zeros((10, 4000))
-fig, ax = plt.subplots(num_tasks, num_classes_per_task, figsize=(num_classes_per_task*3, (num_tasks)*3))
-for t in range(num_tasks):
-    prototypes = torch.mean(data['task_prototypes'][t][:, :, 6:26, 6:26], dim=1, keepdim=True)
-    prototypes_inititalization[t] = prototypes.reshape(-1)
+if config['model']['initialize_prot_w_images']:
+    prototypes_inititalization = torch.zeros((num_tasks, num_classes_per_task*config['model']['prototypes_channels']*config['model']['prototypes_size']*config['model']['prototypes_size']))
+    fig, ax = plt.subplots(num_tasks, num_classes_per_task, figsize=(num_classes_per_task*3, (num_tasks)*3))
+    for t in range(num_tasks):
+        if config['model']['prototypes_size'] != 20:
+            logger.log(f"Warning: Prototype size is not 20, but {config['model']['prototypes_size']}. Check wheather this initialization is correct.")
+        prototypes = torch.mean(data['task_prototypes'][t][:, :, 6:26, 6:26], dim=1, keepdim=True)
+        prototypes_inititalization[t] = prototypes.reshape(-1)
 
-    for i in range(len(data['task_metadata'][t])):
-        ax[t][i].imshow(prototypes[i].permute(1, 2, 0), cmap='gray')
-        ax[t][i].axis('off')
-        ax[t][i].set_title(data['task_metadata'][t][i])
+        for i in range(len(data['task_metadata'][t])):
+            ax[t][i].imshow(prototypes[i].permute(1, 2, 0), cmap='gray')
+            ax[t][i].axis('off')
+            ax[t][i].set_title(data['task_metadata'][t][i])
 
-plt.savefig(results_dir + '/prototypes.png')
-plt.close()
-model.initialize_embeddings(prototypes_inititalization.to(device))
+    plt.savefig(results_dir + '/prototypes.png')
+    plt.close()
+    model.initialize_embeddings(prototypes_inititalization.to(device))
 
 # Initialize the previous model
 previous_model = None

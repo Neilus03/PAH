@@ -36,9 +36,11 @@ model_config = {
     "frozen_backbone": True,  # Whether to freeze the backbone during training.
     "prototypes_channels": 1, # Number of channels of prototypes 1 for grayscale, 3 for RGB
     "prototypes_size": 20,  # Size of the prototypes.
+    "initialize_prot_w_images": True,
     "mean_initialization_prototypes": 0.5,  # Mean for the initialization of the prototypes.
     "std_initialization_prototypes": 0.1,  # Standard deviation for the initialization of the prototypes.
     "lr_config": lr_config}
+
 
 # 3. Training Parameters
 # -----------------------
@@ -56,7 +58,7 @@ training_config = {
 # 5. Logging and Visualization Parameters
 # ---------------------------------------
 frozen = "frozen" if model_config["frozen_backbone"] else ""
-name = f"Hyper2d_i-{frozen}-{model_config['backbone']}-{dataset_config['dataset']}"
+name = f"Hyper2d-{frozen}-{model_config['backbone']}-{dataset_config['dataset']}"
 logging_config = {
     "log_file": "training.log",  # Log file where training information will be saved.
     "log_level": "INFO",  # Logging level for the training process (can be INFO, DEBUG, etc.).
