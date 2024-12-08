@@ -48,12 +48,13 @@ import time
 import logging
 import pdb
 import random
+from config import config
 
-torch.manual_seed(69)
-np.random.seed(69)
-random.seed(69)
-torch.cuda.manual_seed_all(69)
-torch.cuda.manual_seed(69)
+torch.manual_seed(config['misc_config']['random_seed'])
+np.random.seed(config['misc_config']['random_seed'])
+random.seed(config['misc_config']['random_seed'])
+torch.cuda.manual_seed_all(config['misc_config']['random_seed'])
+torch.cuda.manual_seed(config['misc_config']['random_seed'])
 
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
@@ -61,12 +62,12 @@ torch.backends.cudnn.benchmark = False
 torch.cuda.empty_cache()
 
 os.environ["CUDA_VISIBLE_DEVICES"]="5" 
-device = torch.device("cuda:5" if torch.cuda.is_available() else "cpu")
+device = torch.device(config['misc_config']['device'] if torch.cuda.is_available() else "cpu")
 
 ### dataset hyperparameters:
-VAL_FRAC = 0.1
-TEST_FRAC = 0.1
-BATCH_SIZE = 256
+VAL_FRAC = config['dataset']['VAL_FRAC']
+TEST_FRAC = config['dataset']['TEST_FRAC']
+BATCH_SIZE = config['dataset']['BATCH_SIZE']
 dataset = "TinyImageNet" # "Split-MNIST" or "Split-CIFAR100" or "TinyImageNet"
 NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
 
