@@ -26,7 +26,7 @@ import time
 # Add the project root directory to PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from backbones import ResNet50, MobileNetV2, EfficientNetB0 
+from networks.backbones import ResNet50, MobileNetV2, EfficientNetB0 
 
 from configs.Split_CIFAR100.baseline_lwf import *
 
@@ -37,7 +37,7 @@ from utils import (inspect_batch, test_evaluate, training_plot, setup_dataset,
                    evaluate_model_timed, test_evaluate_metrics)
                    
 
-from networks_baseline import MultitaskModel_Baseline, TaskHead_Baseline
+from networks.networks_baseline import MultitaskModel_Baseline, TaskHead_Baseline
 
 seed = config["misc"]["seed"]
 device = torch.device(config["misc"]["device"] if torch.cuda.is_available() else "cpu")
