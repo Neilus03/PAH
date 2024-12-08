@@ -109,7 +109,7 @@ logger.log(f"Starting training for {config['logging']['name']}")
 with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config) as run:
     #count_optimizer_parameters(optimizer, logger)
     
-    #Outer loop for each task, in sequence
+    # Outer loop for each task, in sequence
     for t, (task_train, task_val) in data['timestep_tasks'].items():
         task_train.num_classes = len(data['timestep_task_classes'][t])
         logger.log(f"Task {t}: {task_train.num_classes} classes\n: {data['task_metadata'][t]}")
@@ -166,15 +166,19 @@ with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config) as run:
                 #Combine losses
                 total_loss = hard_loss + config["training"]["stability"] * soft_loss
                 
-                wandb.log({'hard_loss': hard_loss.item(), 'soft_loss': float(soft_loss), 'train_loss': total_loss.item(), 'epoch': e, 'task_id': t, 'batch_idx': batch_idx})
-                
                 #Backpropagate loss
                 total_loss.backward()
                 optimizer.step()
                 
+                accuracy_batch = get_batch_acc(pred, y)
+                
+                wandb.log({'hard_loss': hard_loss.item(), 'soft_loss': float(soft_loss), 
+                           'train_loss': total_loss.item(), 'train_accuracy': accuracy_batch,
+                           'epoch': e, 'task_id': t, 'batch_idx': batch_idx})
+                
                 #Track metrics
                 epoch_train_losses.append(total_loss.item())
-                epoch_train_accs.append(get_batch_acc(pred, y))
+                epoch_train_accs.append(accuracy_batch)
                 epoch_soft_losses.append(soft_loss.item() if isinstance(soft_loss, torch.Tensor) else soft_loss)
                 metrics['steps_trained'] += 1
                 

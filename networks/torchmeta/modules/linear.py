@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from collections import OrderedDict
-from torchmeta.modules.module import MetaModule
+from networks.torchmeta.modules.module import MetaModule
 
 class MetaLinear(nn.Linear, MetaModule):
     __doc__ = nn.Linear.__doc__
