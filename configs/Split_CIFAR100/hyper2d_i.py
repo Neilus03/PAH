@@ -33,7 +33,7 @@ model_config = {
     "backbone": "resnet50",  # Backbone architecture used for the model (e.g., "resnet50").
     "hyper_hidden_features": 1024,
     "hyper_hidden_layers": 6,
-    "frozen_backbone": True,  # Whether to freeze the backbone during training.
+    "frozen_backbone": False,  # Whether to freeze the backbone during training.
     "prototypes_channels": 1, # Number of channels of prototypes 1 for grayscale, 3 for RGB
     "prototypes_size": 20,  # Size of the prototypes.
     "initialize_prot_w_images": True,
@@ -58,7 +58,7 @@ training_config = {
 # 5. Logging and Visualization Parameters
 # ---------------------------------------
 frozen = "frozen" if model_config["frozen_backbone"] else ""
-name = f"Hyper2d_i-{frozen}-{model_config['backbone']}-{dataset_config['dataset']}-initialized={model_config['initialize_prot_w_images']}"
+name = f"Hyper2d_i-{frozen}-{model_config['backbone']}-{dataset_config['dataset']}"
 logging_config = {
     "log_file": "training.log",  # Log file where training information will be saved.
     "log_level": "INFO",  # Logging level for the training process (can be INFO, DEBUG, etc.).
@@ -72,7 +72,7 @@ logging_config = {
 # 6. Miscellaneous Parameters
 # ---------------------------
 misc_config = {
-    "device": "cuda:0",  # Device for training (use "cpu" if no GPU is available).
+    "device": "cuda:1",  # Device for training (use "cpu" if no GPU is available).
     "seed": 42,  # Seed for reproducibility.
 }
 
