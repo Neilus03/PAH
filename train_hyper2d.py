@@ -140,7 +140,8 @@ prev_test_accs_prot = []
 logger.log(f"Starting training for {config['logging']['name']}")
 
 with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config) as run:
-    wandb.log({"all prototypes": wandb.Image(results_dir + '/prototypes.png')})
+    if config['model']['initialize_prot_w_images']:
+        wandb.log({"all prototypes": wandb.Image(results_dir + '/prototypes.png')})
 
     # outer loop over each task, in sequence
     for t, (task_train, task_val) in data['timestep_tasks'].items():
