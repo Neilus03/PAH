@@ -1,5 +1,5 @@
-#/home/ndelafuente/TSR/train/Split-CIFAR100/EWC_baseline.py
-# FILE TO TRAIN EWC BASELINE on Split-CIFAR100
+#/home/ndelafuente/TSR/train/Split-CIFAR100/SI_baseline.py
+# FILE TO TRAIN SI BASELINE on Split-CIFAR100
 
 import torch
 from torch import nn, utils
@@ -24,59 +24,66 @@ import time
 # Add the project root directory to PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from backbones import ResNet50, MobileNetV2, EfficientNetB0 
+from networks.backbones import ResNet50, MobileNetV2, EfficientNetB0 
+from networks.networks_baseline import MultitaskModel_Baseline, TaskHead_Baseline
 
-from configs.Split_MNIST.baseline_ewc import *  
+from utils import *
 
-from utils import (training_plot, setup_dataset, get_batch_acc, logger, seed_everything, setup_optimizer,
-                   evaluate_model_timed, test_evaluate_metrics)
 
-from networks_baseline import MultitaskModel_Baseline, TaskHead_Baseline
+# ------------------ Synaptic Intelligence (SI) Auxiliary Functions ------------------ #
 
-# ------------------ EWC Auxiliary Functions ------------------ #
-def compute_fisher(model, dataset_loader, device, sample_size=200):
-    """
-    Compute Fisher Information for EWC.
-    We sample a subset of the dataset (sample_size) to approximate.
-    """
-    model.eval()
-    fisher = {n: torch.zeros(p.shape, device=device) for n, p in model.named_parameters() if p.requires_grad}
-    count = 0
-    for i, (x, y, task_ids) in enumerate(dataset_loader):
-        x, y = x.to(device), y.to(device)
-        model.zero_grad()
-        # Get loss
-        pred = model(x, task_ids[0])
-        loss = F.nll_loss(F.log_softmax(pred, dim=1), y)
-        loss.backward()
-        for n, p in model.named_parameters():
-            if p.requires_grad and p.grad is not None:
-                fisher[n] += p.grad.data.pow(2)
-        count += 1
-        if count * dataset_loader.batch_size >= sample_size:
-            break
+def initialize_si_structures(model, device):
+    # Omega stores importance for each parameter accumulated over tasks
+    Omega = {n: torch.zeros_like(p, device=device) for n, p in model.named_parameters() if p.requires_grad}
+    return Omega
 
-    # Average fisher
-    for n in fisher:
-        fisher[n] = fisher[n] / count
-    return fisher
+def zero_like_model_params(model, device):
+    return {n: torch.zeros_like(p, device=device) for n, p in model.named_parameters() if p.requires_grad}
 
-def ewc_loss(model, old_params, fisher, ewc_lambda):
-    """
-    Compute EWC penalty term.
-    """
-    loss = 0.0
+def get_params_dict(model):
+    return {n: p.clone().detach() for n, p in model.named_parameters() if p.requires_grad}
+
+def si_penalty(model, old_params, Omega, si_lambda):
+    # Compute SI penalty: sum over i Omega_i * (p_i - old_p_i)^2 / 2
+    loss = torch.tensor(0.0, device=model.device)
     for n, p in model.named_parameters():
         if p.requires_grad and n in old_params:
-            loss += (fisher[n] * (p - old_params[n]).pow(2)).sum()
-    return ewc_lambda * loss
+            loss += (Omega[n] * (p - old_params[n]).pow(2)).sum() / 2
+    return si_lambda * loss
+
+def update_omega(Omega, W, old_params, model, initial_params, epsilon=0.00001):
+    # After finishing a task:
+    # Omega_i += W_i / ((param_final_i - param_init_i)^2 + epsilon)
+    for n, p in model.named_parameters():
+        if p.requires_grad and n in W:
+            param_diff = p.data - initial_params[n]
+            denominator = param_diff.pow(2) + epsilon
+            Omega[n] += W[n] / denominator
+
+def accumulate_w(W, old_params, model):
+    # W_i is accumulated over the course of training the task: Δp_i * g_i
+    # Here:
+    # Before calling this, gradients are computed (after backward).
+    # Then we do an optimizer step.
+    # We need to track param change: Δp_i = p_new - p_old
+    for n, p in model.named_parameters():
+        if p.requires_grad and p.grad is not None:
+            old_val = old_params[n]
+            new_val = p.data
+            delta_p = new_val - old_val
+            g_i = p.grad.data
+            W[n] += delta_p * g_i
+    # After accumulation, update old_params to reflect new values
+    for n, p in model.named_parameters():
+        if p.requires_grad:
+            old_params[n] = p.data.clone()
 
 # ------------------ Main Training Script ------------------ #
 
-seed = config["misc"]["seed"]
-device = torch.device(config["misc"]["device"] if torch.cuda.is_available() else "cpu")
+config = config_load(sys.argv[1])['config']
+seed_everything(config['misc']['seed'])
 
-seed_everything(seed)
+device = torch.device(config["misc"]["device"] if torch.cuda.is_available() else "cpu")
 
 num = time.strftime("%Y%m%d-%H%M%S")
 name_run = f"{config['logging']['name']}-{num}"
@@ -85,11 +92,11 @@ os.makedirs(results_dir, exist_ok=True)
 
 logger = logger(results_dir)
 
-#Log initial info
+# Log initial info
 logger.log(f"Starting training for {config['logging']['name']}")
 logger.log(f"Configuration: {config}")
 logger.log(f"Device: {device}")
-logger.log(f"Random seed: {seed}")
+logger.log(f"Random seed: {config['misc']['seed']}")
 
 #Load dataset
 data = setup_dataset(dataset_name = config["dataset"]["dataset"],
@@ -113,22 +120,22 @@ if config["model"]["frozen_backbone"] == True:
     for param in backbone.parameters():
         param.requires_grad = False
 
-#Create model
-baseline_ewc = MultitaskModel_Baseline(backbone, device)
+# Create model
+baseline_si = MultitaskModel_Baseline(backbone, device)
 
 logger.log(f"Model created!")
 logger.log(f"Model initialized with freeze_backbone={config['model']['frozen_backbone']}, config={config['model']}")
 
-#Initialize optimizer and loss
+# Initialize optimizer and loss
 optimizer = setup_optimizer(
-                model=baseline_ewc,
+                model=baseline_si,
                 lr=config["training"]["lr"],
                 l2_reg=config["training"]["l2_reg"],
                 optimizer=config["training"]["optimizer"]
             )
 loss_fn = nn.CrossEntropyLoss()
 
-#Track metrics for plotting
+# Track metrics for plotting
 metrics = { 'train_losses': [],
             'train_accs': [],
             'val_losses': [],
@@ -137,45 +144,52 @@ metrics = { 'train_losses': [],
             'CL_timesteps': [],
             'best_val_acc': 0.0,
             'steps_trained': 0,
-            'soft_losses': [], # Not used now, but kept to maintain code structure
+            'soft_losses': [],
            }
 
 prev_test_accs = []
 
 logger.log(f"Starting training for {config['logging']['name']}")
 
-# EWC parameters storage
-old_params = None
-fisher = None
-ewc_lambda = config["training"]["ewc_lambda"]
+# SI parameters and structures
+Omega = initialize_si_structures(baseline_si, device)
+old_params = get_params_dict(baseline_si) # initial old params (before first task)
+si_lambda = config["training"]["si_lambda"]
+epsilon = config["training"]["si_epsilon"]
 
 with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config) as run:
-    #count_optimizer_parameters(optimizer, logger)
-    
     #Outer loop for each task, in sequence
     for t, (task_train, task_val) in data['timestep_tasks'].items():
         task_train.num_classes = len(data['timestep_task_classes'][t])
         logger.log(f"Task {t}: {task_train.num_classes} classes\n: {data['task_metadata'][t]}")
         
-        if t not in baseline_ewc.task_heads:
-            task_head = TaskHead_Baseline(input_size=baseline_ewc.backbone.num_features, 
+        if t not in baseline_si.task_heads:
+            task_head = TaskHead_Baseline(input_size=baseline_si.backbone.num_features, 
                                           projection_size=config["model"]["task_head_projection_size"],
                                           num_classes=task_train.num_classes,
                                           device=device)
-            #Add task head to model
-            baseline_ewc.add_task(t, task_head)
+            # Add task head to model
+            baseline_si.add_task(t, task_head)
             optimizer.add_param_group({'params': task_head.parameters()})
             logger.log(f"Task head added for task {t}")
             
-        #Build training and validation dataloaders
+        # Build training and validation dataloaders
         train_loader, val_loader = [utils.data.DataLoader(d,
                                         batch_size=config["dataset"]["BATCH_SIZE"],
                                         shuffle=True) for d in (task_train, task_val)]
         
+        # Store initial params at start of the task
+        initial_params = get_params_dict(baseline_si)
+        # Initialize W for this task
+        W = zero_like_model_params(baseline_si, device)
+        
+        # After setting initial_params and W, we also set "old_params" to track param changes during updates
+        temp_old_params = get_params_dict(baseline_si)
+        
         #Inner loop for training epochs over the current task
         for e in range(config['training']['epochs_per_timestep']):
             epoch_train_losses, epoch_train_accs = [], []
-            epoch_soft_losses = [] # Not used for EWC, but retained for consistency
+            epoch_soft_losses = [] # Not used for SI, but keep structure
             
             progress_bar = tqdm(train_loader, ncols=100, total=len(train_loader), desc=f"Task {t}, Epoch {e}") if config["logging"]["show_progress"] else train_loader
             
@@ -187,32 +201,44 @@ with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config) as run:
                 
                 optimizer.zero_grad()
                 
-                pred = baseline_ewc(x, task_id)
+                pred = baseline_si(x, task_id)
                 hard_loss = loss_fn(pred, y)
                 
-                # EWC penalty if not the first task
+                # SI penalty if not the first task
                 penalty = 0.0
-                if t > 0 and old_params is not None and fisher is not None:
-                    penalty = ewc_loss(baseline_ewc, old_params, fisher, ewc_lambda)
+                if t > 0:
+                    penalty = si_penalty(baseline_si, old_params, Omega, si_lambda)
                 
                 total_loss = hard_loss + penalty
                 
-                wandb.log({'hard_loss': hard_loss.item(), 'ewc_penalty': float(penalty), 'train_loss': total_loss.item(), 'epoch': e, 'task_id': t, 'batch_idx': batch_idx})
+                wandb.log({'hard_loss': hard_loss.item(), 'si_penalty': float(penalty), 'train_loss': total_loss.item(), 'epoch': e, 'task_id': t, 'batch_idx': batch_idx})
                 
                 total_loss.backward()
+                
+                # Before step, store old param values
+                pre_update_params = {n: p.data.clone() for n, p in baseline_si.named_parameters() if p.requires_grad}
+                
                 optimizer.step()
+                
+                # After step, accumulate W
+                for n, p in baseline_si.named_parameters():
+                    if p.requires_grad and p.grad is not None:
+                        delta_p = p.data - pre_update_params[n]
+                        Omega[n] = torch.zeros_like(p.data)
+                        g_i = p.grad.data
+                        W[n] += delta_p * g_i
                 
                 #Track metrics
                 epoch_train_losses.append(total_loss.item())
                 epoch_train_accs.append(get_batch_acc(pred, y))
-                epoch_soft_losses.append(0.0)  # no soft loss in EWC, just keep to maintain structure
+                epoch_soft_losses.append(0.0)  
                 metrics['steps_trained'] += 1
                 
                 if config["logging"]["show_progress"]:
                     progress_bar.set_description(f"Task {t}, Epoch {e}, Loss: {total_loss.item():.4f}, Acc: {epoch_train_accs[-1]:.4f}")
                     
             #Evaluate model on current task's validation set after each epoch
-            avg_val_loss, avg_val_acc, time_elapsed = evaluate_model_timed(multitask_model=baseline_ewc,
+            avg_val_loss, avg_val_acc, time_elapsed = evaluate_model_timed(multitask_model=baseline_si,
                                                                           val_loader=val_loader,  
                                                                           loss_fn=loss_fn,
                                                                           device=device)
@@ -249,10 +275,10 @@ with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config) as run:
             
         #Evaluate the model on all previous tasks
         metrics_test = test_evaluate_metrics(
-                            multitask_model=baseline_ewc,
+                            multitask_model=baseline_si,
                             selected_test_sets=data['task_test_sets'][:t+1],
                             task_test_sets=data['task_test_sets'],
-                            model_name=f'EWC at t={t}',
+                            model_name=f'SI at t={t}',
                             prev_accs=prev_test_accs,
                             verbose=True,
                             task_metadata=data['task_metadata'],
@@ -262,10 +288,13 @@ with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config) as run:
         wandb.log({**metrics_test, 'task_id': t})
         prev_test_accs.append(metrics_test['task_test_accs'])
         
-        # After finishing training task t, compute Fisher and store old params
-        baseline_ewc.eval()
-        old_params = {n: p.clone().detach() for n, p in baseline_ewc.named_parameters() if p.requires_grad}
-        fisher = compute_fisher(baseline_ewc, train_loader, device, sample_size=200)
+        # After finishing training this task, update Omega
+        baseline_si.eval()
+        final_params = get_params_dict(baseline_si)
+        update_omega(Omega, W, old_params, baseline_si, initial_params, epsilon=epsilon)
+        
+        # Set old_params to the parameters at the end of this task
+        old_params = final_params
             
     #Log final metrics
     logger.log(f"Task {t} completed!")

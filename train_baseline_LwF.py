@@ -26,24 +26,15 @@ import time
 # Add the project root directory to PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from backbones import ResNet50, MobileNetV2, EfficientNetB0 
+from networks.backbones import ResNet50, MobileNetV2, EfficientNetB0 
+from networks.networks_baseline import MultitaskModel_Baseline, TaskHead_Baseline
 
-from configs.Split_MNIST.baseline_lwf import *
+from utils import *
 
-from utils import (inspect_batch, test_evaluate, training_plot, setup_dataset, 
-                   inspect_task, evaluate_model, evaluate_model_prototypes, 
-                   get_batch_acc, logger, seed_everything, setup_optimizer,
-                   count_optimizer_parameters, distillation_output_loss,
-                   evaluate_model_timed, test_evaluate_metrics)
-                   
+config = config_load(sys.argv[1])["config"]
 
-from networks_baseline import MultitaskModel_Baseline, TaskHead_Baseline
-
-seed = config["misc"]["seed"]
 device = torch.device(config["misc"]["device"] if torch.cuda.is_available() else "cpu")
-
-seed_everything(seed)
-
+seed_everything(config['misc']['seed'])
 
 num = time.strftime("%Y%m%d-%H%M%S")
 name_run = f"{config['logging']['name']}-{num}"
@@ -56,7 +47,7 @@ logger = logger(results_dir)
 logger.log(f"Starting training for {config['logging']['name']}")
 logger.log(f"Configuration: {config}")
 logger.log(f"Device: {device}")
-logger.log(f"Random seed: {seed}")
+logger.log(f"Random seed: {config['misc']['seed']}")
 
 #Load dataset
 data = setup_dataset(dataset_name = config["dataset"]["dataset"],

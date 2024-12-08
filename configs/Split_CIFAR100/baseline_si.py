@@ -59,7 +59,7 @@ logging_config = {
 # 6. Miscellaneous Parameters
 # ---------------------------
 misc_config = {
-    "device": "cuda:2",  # Device for training (use "cpu" if no GPU is available).
+    "device": "cuda:0",  # Device for training (use "cpu" if no GPU is available).
     "seed": 42,  # Seed for reproducibility.
 }
 

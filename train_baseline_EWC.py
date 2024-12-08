@@ -24,14 +24,10 @@ import time
 # Add the project root directory to PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from backbones import ResNet50, MobileNetV2, EfficientNetB0 
+from networks.backbones import ResNet50, MobileNetV2, EfficientNetB0 
+from networks.networks_baseline import MultitaskModel_Baseline, TaskHead_Baseline
 
-from configs.Split_CIFAR100.baseline_ewc import *  
-
-from utils import (training_plot, setup_dataset, get_batch_acc, logger, seed_everything, setup_optimizer,
-                   evaluate_model_timed, test_evaluate_metrics)
-
-from networks_baseline import MultitaskModel_Baseline, TaskHead_Baseline
+from utils import *
 
 # ------------------ EWC Auxiliary Functions ------------------ #
 def compute_fisher(model, dataset_loader, device, sample_size=200):
@@ -73,10 +69,10 @@ def ewc_loss(model, old_params, fisher, ewc_lambda):
 
 # ------------------ Main Training Script ------------------ #
 
-seed = config["misc"]["seed"]
-device = torch.device(config["misc"]["device"] if torch.cuda.is_available() else "cpu")
+config = config_load(sys.argv[1])["config"]
 
-seed_everything(seed)
+device = torch.device(config["misc"]["device"] if torch.cuda.is_available() else "cpu")
+seed_everything(config['misc']['seed'])
 
 num = time.strftime("%Y%m%d-%H%M%S")
 name_run = f"{config['logging']['name']}-{num}"
@@ -89,7 +85,7 @@ logger = logger(results_dir)
 logger.log(f"Starting training for {config['logging']['name']}")
 logger.log(f"Configuration: {config}")
 logger.log(f"Device: {device}")
-logger.log(f"Random seed: {seed}")
+logger.log(f"Random seed: {config['misc']['seed']}")
 
 #Load dataset
 data = setup_dataset(dataset_name = config["dataset"]["dataset"],
