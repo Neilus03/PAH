@@ -1549,7 +1549,7 @@ def config_load(filename) -> EasyDict:
 	return res
         
 
-def setup_optimizer(parameters, lr, l2_reg, optimizer):
+def setup_optimizer(model, lr, l2_reg, optimizer):
     if optimizer == "Adam":
         return torch.optim.Adam(model.parameters(), lr=lr, weight_decay=l2_reg)
     elif optimizer == "SGD":
