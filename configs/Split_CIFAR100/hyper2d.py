@@ -36,7 +36,7 @@ model_config = {
     "frozen_backbone": True,  # Whether to freeze the backbone during training.
     "prototypes_channels": 1, # Number of channels of prototypes 1 for grayscale, 3 for RGB
     "prototypes_size": 20,  # Size of the prototypes.
-    "initialize_prot_w_images": True,
+    "initialize_prot_w_images": False,
     "mean_initialization_prototypes": 0.5,  # Mean for the initialization of the prototypes.
     "std_initialization_prototypes": 0.1,  # Standard deviation for the initialization of the prototypes.
     "lr_config": lr_config}
