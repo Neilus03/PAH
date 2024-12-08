@@ -51,10 +51,9 @@ class MultitaskModel_Baseline(nn.Module):
         self.relu = nn.ReLU()
         self.device = device
         self.to(device)
+    
 
-    def forward(self, 
-                x: torch.Tensor, 
-                task_id: int):
+    def forward(self, x: torch.Tensor, task_id: int):
         if x.device != self.device:
             x = x.to(self.device)
         

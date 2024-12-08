@@ -1545,7 +1545,31 @@ def setup_optimizer(model, lr, l2_reg, optimizer):
         return torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=l2_reg)
     
         
-        
+def count_optimizer_parameters(optimizer: torch.optim.Optimizer, logger=None) -> None:
+    """
+    Prints the number of parameters in each parameter group of the optimizer
+    and the total number of unique parameters being optimized.
+    
+    Args:
+        optimizer (torch.optim.Optimizer): The optimizer instance to inspect.
+    """
+    total_params = 0
+    unique_params = set()
+    
+    logger.log("\n=== Optimizer Parameter Groups ===")
+    for idx, param_group in enumerate(optimizer.param_groups):
+        num_params = len(param_group['params'])
+        # Calculate the total number of parameters in this group
+        num_params_in_group = sum(p.numel() for p in param_group['params'])
+        print(f"Parameter Group {idx + 1}: {num_params} parameters, Total Parameters: {num_params_in_group}")
+        total_params += num_params_in_group
+        # Add to the set of unique parameters to avoid double-counting
+        for p in param_group['params']:
+            unique_params.add(p)
+    
+    logger.log(f"Total Optimized Parameters: {total_params} ({sum(p.numel() for p in unique_params)} unique)")
+    logger.log("===================================\n")
+     
 #-----------------------------------------------------------------#
 #----------------------utils.py-----------------------------------#
 #-----------------------------------------------------------------#

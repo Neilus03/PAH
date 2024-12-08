@@ -16,6 +16,7 @@ from PIL import Image
 from tqdm import tqdm
 import os
 
+
 from config import config
 from utils import (inspect_batch, test_evaluate, training_plot, setup_dataset, 
                    inspect_task, evaluate_model, evaluate_model_prototypes, 
@@ -95,7 +96,7 @@ class MultitaskModel(nn.Module):
 
 
 torch.manual_seed(0)
-torch.cuda.empty_cache()
+
 
 ### dataset hyperparameters:
 VAL_FRAC = 0.1
