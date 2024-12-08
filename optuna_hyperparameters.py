@@ -3,7 +3,7 @@ from optuna.visualization import plot_optimization_history, plot_param_importanc
 import torch
 from torch import utils
 import numpy as np
-from hypernetwork import HyperCMTL_seq_simple_2d
+from networks.hypernetwork import HyperCMTL_seq_simple_2d
 from utils import setup_dataset, evaluate_model_2d, distillation_output_loss, get_batch_acc, evaluate_model_2d, test_evaluate_2d, training_plot, evaluate_model_2d
 import wandb
 import time
