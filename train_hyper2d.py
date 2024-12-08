@@ -83,12 +83,6 @@ data = setup_dataset_prototype(
 num_tasks = len(data['task_metadata'])
 num_classes_per_task = len(data['task_metadata'][0])
 
-backbone_dict = {
-    'resnet50': ResNet50,
-    'mobilenetv2': MobileNetV2,
-    'efficientnetb0': EfficientNetB0
-}
-
 logger.log(f"Using backbone: {config['model']['backbone']}")
 
 # Initialize the model with the new configurations

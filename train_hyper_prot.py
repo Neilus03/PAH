@@ -32,10 +32,7 @@ from tqdm import tqdm
 import os
 
 # Functions from utils to help with training and evaluation
-from utils import (
-    inspect_batch, test_evaluate_prototypes, training_plot, setup_dataset_prototype, 
-    inspect_task, distillation_output_loss, evaluate_model_prototypes, get_batch_acc, logger
-)
+from utils import *
 
 # Import the HyperCMTL_seq model architecture
 from networks.hypernetwork import HyperCMTL_seq, HyperCMTL_seq_simple, HyperCMTL_seq_prototype_simple
@@ -50,115 +47,63 @@ from copy import deepcopy  # Deepcopy for copying models
 import time
 import logging
 import pdb
+import sys
 
 import random
 
-# Set random seeds for reproducibility
-torch.manual_seed(69)
-np.random.seed(69)
-random.seed(69)
-torch.cuda.manual_seed_all(69)
-torch.cuda.manual_seed(69)
+config = config_load(sys.argv[1])["config"]
+device = torch.device(config["misc"]["device"] if torch.cuda.is_available() else "cpu")
+seed_everything(config['misc']['seed'])
 
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
-# Clear CUDA cache
-torch.cuda.empty_cache()
-
-# Determine device
-device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
-
-
-### Dataset hyperparameters:
-VAL_FRAC = 0.1
-TEST_FRAC = 0.1
-BATCH_SIZE = 256
-dataset = "Split-CIFAR100"  # Options: "Split-MNIST", "Split-CIFAR100", "TinyImageNet"
-NUM_TASKS = 5 if dataset == 'Split-MNIST' else 10
-
-### Training hyperparameters:
-EPOCHS_PER_TIMESTEP = 15
-lr     = 1e-4  # initial learning rate
-l2_reg = 1e-6  # L2 weight decay term (0 means no regularisation)
-temperature = 2.0  # temperature scaling factor for distillation loss
-stability = 5  # `stability` term to balance this soft loss with the usual hard label loss for the current classification task.
-
-# Create results directory
-os.makedirs('results', exist_ok=True)
-num = time.strftime("%m%d-%H%M%S")
-results_dir = f'results/{num}-HyperCMTL_seq'
+num = time.strftime("%Y%m%d-%H%M%S")
+name_run = f"{config['logging']['name']}-{num}"
+results_dir = os.path.join(config["logging"]["results_dir"], name_run)
 os.makedirs(results_dir, exist_ok=True)
 
 # Initialize logger
 logger = logger(results_dir)
 
 # Log initial information
-logger.log('Starting training...')
-logger.log(f'Training hyperparameters: EPOCHS_PER_TIMESTEP={EPOCHS_PER_TIMESTEP}, lr={lr}, l2_reg={l2_reg}, temperature={temperature}, stability={stability}')
-logger.log(f'Training on device: {device}')
+logger.log(f"Starting training for {config['logging']['name']}")
+logger.log(f"Configuration: {config}")
+logger.log(f"Device: {device}")
+logger.log(f"Random seed: {config['misc']['seed']}")
 
 ### Define preprocessing transform and load dataset
 data = setup_dataset_prototype(
-    dataset_name=dataset, 
-    data_dir='./data', 
-    num_tasks=NUM_TASKS, 
-    val_frac=VAL_FRAC, 
-    test_frac=TEST_FRAC, 
-    batch_size=BATCH_SIZE
+    dataset_name=config['dataset']['dataset'], 
+    data_dir=config["dataset"]["data_dir"], 
+    num_tasks=config['dataset']['NUM_TASKS'], 
+    val_frac=config['dataset']['VAL_FRAC'], 
+    test_frac=config['dataset']['TEST_FRAC'], 
+    batch_size=config['dataset']['BATCH_SIZE']
 )
 
 
-# Extract data components
-timestep_tasks = data['timestep_tasks']
-final_test_loader = data['final_test_loader']
-task_metadata = data['task_metadata']
-task_test_sets = data['task_test_sets']
-images_per_class = data['images_per_class']
-timestep_task_classes = data['timestep_task_classes']
-train_prototypes = data['train_prototype_image_per_class']
-prototype_loader = data['prototype_loader']
-task_prototypes = data['task_prototypes']
-prototype_indices = data['prototype_indices']
-
-
-
 # More complex model configuration
-backbone = 'resnet50'  # Options: ['mobilenetv2', 'efficientnetb0', 'vit'] (vit not yet working)
-task_head_projection_size = 512  # Even larger hidden layer in task head
-hyper_hidden_features = 256  # Larger hypernetwork hidden layer size
-hyper_hidden_layers = 4  # Deeper hypernetwork
-freeze_backbone = False  # Freeze the backbone weights
+
+num_tasks = len(data['task_metadata'])
+num_classes_per_task = len(data['task_metadata'][0])
+
+logger.log(f"Using backbone: {config['model']['backbone']}")
 
 # Initialize the model with the new configurations
 model = HyperCMTL_seq_prototype_simple(
-    num_instances=len(task_metadata),
-    freeze_backbone=freeze_backbone,
-    backbone=backbone,
-    task_head_projection_size=task_head_projection_size,
-    task_head_num_classes=len(task_metadata[0]),
-    hyper_hidden_features=hyper_hidden_features,
-    hyper_hidden_layers=hyper_hidden_layers,
-    device=device,
-    std=0.01
+    num_tasks=num_tasks,
+    num_classes_per_task=num_classes_per_task,
+    model_config=config['model'],
+    device=device
 ).to(device)
 
-
-
-# Log the model architecture and configuration
-#logger.log(f'Model architecture: {model}')
-logger.log(f"Model initialized with backbone_config={backbone}, task_head_projection_size={task_head_projection_size}, hyper_hidden_features={hyper_hidden_features}, hyper_hidden_layers={hyper_hidden_layers}")
+logger.log(f"Model created!")
+logger.log(f"Model initialized with freeze_backbone={config['model']['frozen_backbone']}, config={config['model']}")
 
 # Initialize the previous model
 previous_model = None
 
 # Initialize optimizer and loss function:
-opt = torch.optim.AdamW(model.get_optimizer_list(), lr=lr, weight_decay=l2_reg)
+opt = torch.optim.AdamW(model.get_optimizer_list())
 loss_fn = nn.CrossEntropyLoss()
-
-### Metrics and plotting:
-plot_training = True   # show training plots after each timestep
-show_progress = True   # show progress bars and end-of-epoch metrics
-verbose       = True   # output extra info to console
 
 # Track metrics for plotting training curves:
 metrics = { 
@@ -174,39 +119,37 @@ metrics = {
 }
 
 prev_test_accs = []
+logger.log(f"Starting training for {config['logging']['name']}")
 
-print("Starting training")
-frozen = 'frozen' if freeze_backbone == True else ""
-with wandb.init(project='HyperCMTL', name=f'HyperCMTL_1seq-prototypes-{dataset}-{backbone}-{frozen}') as run:
+with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config) as run:
 
     # Outer loop over each task, in sequence
-    for t, (task_train, task_val) in tqdm(timestep_tasks.items(), desc="Processing Tasks"):
-        logger.log(f"Training on task id: {t}  (classification between: {task_metadata[t]})")
-
+    for t, (task_train, task_val) in data['timestep_tasks'].items():
+        task_train.num_classes = len(data['timestep_task_classes'][t])
+        logger.log(f"Task {t}: {task_train.num_classes} classes\n: {data['task_metadata'][t]}")
+        
         # Build train and validation loaders for the current task
         train_loader = DataLoader(
             task_train, 
-            batch_size=BATCH_SIZE, 
+            batch_size=config['dataset']['BATCH_SIZE'], 
             shuffle=True
         )
         val_loader = DataLoader(
             task_val, 
-            batch_size=BATCH_SIZE, 
+            batch_size=config['dataset']['BATCH_SIZE'], 
             shuffle=False
         )
         
         # Retrieve prototypes for the current task
-        
-        prototypes = task_prototypes[t].to(device) # Shape: (num_classes_per_task, C, H, W)
+        prototypes = data["task_prototypes"][t].to(device) # Shape: (num_classes_per_task, C, H, W)
     
-
         # Inner loop over the current task:
-        for e in range(EPOCHS_PER_TIMESTEP):
+        for e in range(config['training']['epochs_per_timestep']):
             epoch_train_losses, epoch_train_accs = [], []
             epoch_soft_losses = []
 
             # Initialize progress bar
-            progress_bar = tqdm(train_loader, ncols=100, desc=f'Task {t} Epoch {e+1}') if show_progress else train_loader
+            progress_bar = tqdm(train_loader, ncols=100) if config["logging"]["show_progress"] else train_loader
             num_batches = len(train_loader)
             
             for batch_idx, batch in enumerate(progress_bar):
@@ -236,11 +179,12 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL_1seq-prototypes-{dataset}-
                         # Current model's predictions for old tasks
                         new_prev_pred = model(x, prototypes, old_task_id)
                         # Accumulate distillation loss
-                        soft_loss += distillation_output_loss(new_prev_pred, old_pred, temperature).mean().to(device)
+                        soft_loss += distillation_output_loss(new_prev_pred, old_pred, config['training']['temperature']).mean()
 
                 # Total loss
-                total_loss = hard_loss + stability * soft_loss
-
+                soft_loss *= config['training']['stability']
+                total_loss = hard_loss + soft_loss
+                
                 # Backward pass and optimization
                 total_loss.backward()
                 opt.step()
@@ -251,7 +195,7 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL_1seq-prototypes-{dataset}-
                 # Log metrics to wandb
                 wandb.log({
                     'hard_loss': hard_loss.item(), 
-                    'soft_loss': (soft_loss * stability).item(), 
+                    'soft_loss': soft_loss.item(), 
                     'train_loss': total_loss.item(), 
                     'epoch': e, 
                     'task_id': t, 
@@ -265,17 +209,15 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL_1seq-prototypes-{dataset}-
                 epoch_soft_losses.append(soft_loss.item() if isinstance(soft_loss, torch.Tensor) else soft_loss)
                 metrics['steps_trained'] += 1
 
-                if show_progress:
+                if config["logging"]["show_progress"]:
                     # Update progress bar description
-                    progress_bar.set_description(
-                        f'E{e+1} batch loss:{hard_loss:.2f}, batch acc:{accuracy_batch:>5.1%}'
-                    )
+                    progress_bar.set_description((f'E{e} batch loss:{hard_loss:.2f}, batch acc:{accuracy_batch:>5.1%}'))
+
 
             # Evaluate after each epoch on the current task's validation set
-            avg_val_loss, avg_val_acc = evaluate_model_prototypes(multitask_model=model,  # model to evaluate
+            avg_val_loss, avg_val_acc, time = evaluate_model_timed(multitask_model=model,  # model to evaluate
                                     val_loader=val_loader, # task-specific data to evaluate on
                                     prototypes=prototypes ,  # prototypes for the current task
-                                    task_id=task_id, # current task id
                                     loss_fn=loss_fn,  # loss function
                                     device=device)  # device to run on
 
@@ -284,7 +226,8 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL_1seq-prototypes-{dataset}-
                 'val_loss': avg_val_loss, 
                 'val_accuracy': avg_val_acc, 
                 'epoch': e, 
-                'task_id': t
+                'task_id': t,
+                'time': time
             })
 
             # Update metrics
@@ -295,7 +238,7 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL_1seq-prototypes-{dataset}-
             metrics['val_accs'].append(avg_val_acc)
             metrics['soft_losses'].extend(epoch_soft_losses)
 
-            if show_progress:
+            if config["logging"]["verbose"]:
                 # Log end-of-epoch stats
                 logger.log(
                     f'E{e+1} loss:{np.mean(epoch_train_losses):.2f}|v:{avg_val_loss:.2f}' +
@@ -310,45 +253,37 @@ with wandb.init(project='HyperCMTL', name=f'HyperCMTL_1seq-prototypes-{dataset}-
         metrics['CL_timesteps'].append(metrics['steps_trained'])
 
         # Plot training curves
-        if plot_training and len(metrics['val_losses']) > 0:
+        if config["logging"]["plot_training"] and len(metrics['val_losses']) > 0:
             training_plot(metrics, show_timesteps=True, results_dir=f'{results_dir}/training-t{t}.png')
 
-        if verbose:
-            logger.log(f'Best validation accuracy: {metrics["best_val_acc"]:.2%}\n')
+        if config["logging"]["verbose"]:
+            logger.log(f"Best validation accuracy: {metrics['best_val_acc']:.4f}")
+            logger.log(f"Epoch {e} completed in {time:.2f}s")   
         metrics['best_val_acc'] = 0.0
 
         # Evaluate on all tasks up to current
-        test_accs = test_evaluate_prototypes(
-                        multitask_model=model, 
-                        selected_test_sets=task_test_sets[:t+1],  
-                        task_test_sets=task_test_sets, 
-                        task_prototypes=task_prototypes, 
-                        prev_accs=prev_test_accs,
-                        show_taskwise_accuracy=True, 
-                        baseline_taskwise_accs=None, 
-                        model_name='HyperCMTL_seq + LwF', 
-                        verbose=True, 
-                        batch_size=BATCH_SIZE,
-                        results_dir=results_dir,
-                        task_metadata=task_metadata,
-                        task_id=t,
-                        loss_fn=loss_fn,
-                    )
+        metrics_test = test_evaluate_metrics(
+                            multitask_model=model,
+                            selected_test_sets=data['task_test_sets'][:t+1],
+                            task_test_sets=data['task_test_sets'],
+                            model_name=f'LwF at t={t}',
+                            prev_accs=prev_test_accs,
+                            verbose=True,
+                            task_metadata=data['task_metadata'],
+                            device=device,
+                            task_prototypes=data['task_prototypes']
+                            )
 
         # Log test accuracy to wandb
-        wandb.log({'mean_test_acc': np.mean(test_accs), 'task_id': t})
+        wandb.log({**metrics_test, 'task_id': t})
 
         # Append test accuracies
-        prev_test_accs.append(test_accs)
+        prev_test_accs.append(metrics_test['task_test_accs'])
 
         #store the current model as the previous model
         previous_model = model.deepcopy()
-        previous_model.eval()  # Set to evaluation mode
-        for param in previous_model.parameters():
-            param.requires_grad = False  # Freeze the previous model
 
-    # After all tasks, evaluate final test accuracy
-    final_avg_test_acc = np.mean(test_accs)
-    logger.log(f'Final average test accuracy: {final_avg_test_acc:.2%}')
-    wandb.log({'final_avg_test_acc': final_avg_test_acc, 'task_id': t})
-    wandb.summary['final_avg_test_acc'] = final_avg_test_acc
+    #Log final metrics
+    logger.log(f"Task {t} completed!")
+    logger.log(f'final metrics: {metrics_test}')
+    wandb.summary.update(metrics_test)
