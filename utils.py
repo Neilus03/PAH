@@ -1058,22 +1058,6 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
             for t in range(num_tasks)
         }
 
-    elif dataset_name == 'TinyImageNet':
-        dataset_train = datasets.ImageFolder(os.path.join(data_dir, 'tiny-imagenet-200', 'train'))
-        dataset_test = datasets.ImageFolder(os.path.join(data_dir, 'tiny-imagenet-200', 'val'))
-        num_classes = 200
-        preprocess = transforms.Compose([
-            transforms.Resize((64, 64)),
-            transforms.ToTensor(),
-            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-        ])
-        task_classes_per_task = num_classes // num_tasks
-        timestep_task_classes = {
-            t: list(range(t * task_classes_per_task, (t + 1) * task_classes_per_task))
-            for t in range(num_tasks)
-        }
-
-
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
     
@@ -1100,15 +1084,6 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
             task_indices_test = [i for i, label in enumerate(dataset_test.targets) if label in task_classes]
             task_images_test = [Image.fromarray(dataset_test.data[i]) for i in task_indices_test]
             task_labels_test = [label for i, label in enumerate(dataset_test.targets) if label in task_classes]
-
-        elif dataset_name == 'TinyImageNet':
-            task_indices_train = [i for i, (_, label) in enumerate(dataset_train.samples) if label in task_classes]
-            task_images_train = [dataset_train[i][0] for i in task_indices_train]
-            task_labels_train = [label for i, (_, label) in enumerate(dataset_train.samples) if label in task_classes]
-            task_indices_test = [i for i, (_, label) in enumerate(dataset_test.samples) if label in task_classes]
-            task_images_test = [dataset_test[i][0] for i in task_indices_test]
-            task_labels_test = [label for i, (_, label) in enumerate(dataset_test.samples) if label in task_classes]
-
         
         # Map old labels to 0-based labels for the task
         class_to_idx = {orig: idx for idx, orig in enumerate(task_classes)}
@@ -1141,15 +1116,10 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
         # Store datasets and metadata
         timestep_tasks[t] = (train_set, val_set)
         task_test_sets.append(test_set)
-        if dataset_name == 'TinyImagenet':
-            task_metadata[t] = {
-                idx: os.path.basename(dataset_train.classes[orig]) for orig, idx in class_to_idx.items()
-            }
-        else:
-            task_metadata[t] = {
-                idx: dataset_train.classes[orig] if hasattr(dataset_train, 'classes') else str(orig)
-                for orig, idx in class_to_idx.items()
-            }
+        task_metadata[t] = {
+            idx: dataset_train.classes[orig] if hasattr(dataset_train, 'classes') else str(orig)
+            for orig, idx in class_to_idx.items()
+        }
 
     # Final datasets
     final_test_data = ConcatDataset(task_test_sets)
