@@ -5,6 +5,7 @@ import wandb
 all_datasets = ["Split-MNIST", "Split-CIFAR100", "TinyImageNet"]
 freeze = ["False", "True"]
 models = ["Hyper" , "Hyper_prot", "Hyper2d_i", "Hyper2d"]
+models = ["EWC", "SI", "LwF"]
 
 training_files = {
     "EWC": "train_baseline_EWC.py",

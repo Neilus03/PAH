@@ -27,7 +27,7 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from networks.backbones import ResNet50, MobileNetV2, EfficientNetB0, ViT, ResNet18
-from networks.networks_baseline import MultitaskModel_Baseline, TaskHead_Baseline
+from networks.networks_baseline import *
 
 from utils import *
 
@@ -125,8 +125,7 @@ with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', con
         logger.log(f"Task {t}: {task_train.num_classes} classes\n: {data['task_metadata'][t]}")
         
         if t not in baseline_lwf.task_heads:
-            task_head = TaskHead_Baseline(input_size=baseline_lwf.backbone.num_features, 
-                                          projection_size=config["model"]["task_head_projection_size"],
+            task_head = TaskHead_simple(input_size=baseline_lwf.backbone.num_features, 
                                           num_classes=task_train.num_classes,
                                           device=device)
             #Add task head to model

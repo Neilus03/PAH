@@ -31,6 +31,30 @@ class TaskHead_Baseline(nn.Module):
 
         return x
     
+
+
+class TaskHead_simple(nn.Module):
+    def __init__(self, input_size: int, # number of features in the backbone's output
+                 num_classes: int,      # number of output neurons
+                 device: str,           # device for computation ('cuda' or 'cpu')
+                 dropout: float=0.,     # optional dropout rate to apply
+                 ):
+        super().__init__()
+
+        self.input_size = input_size
+        self.num_classes = num_classes
+        self.dropout = dropout
+        self.device = device
+
+        self.classifier = nn.Linear(input_size, num_classes, bias=False)
+
+        self.device = device
+        self.to(device)
+
+    def forward(self, x):
+        return self.classifier(x)
+    
+
 ### and a baseline_lwf_model that contains a backbone plus multiple class heads,
 ### and performs task-ID routing at runtime, allowing it to perform any learned task:
 class MultitaskModel_Baseline(nn.Module):
