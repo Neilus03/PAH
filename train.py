@@ -1,10 +1,13 @@
 import os
+from time import sleep
 
-changes = {"NAME-DATASET": "Split-CIFAR100",
-            "FROOZE_BKBN": "False"}
+all_datasets = ["Split-CIFAR100"]
+freeze = ["False", "True"]
+models = ["Hyper", "Hyper_prot", "Hyper2d_i", "Hyper2d"]
 
-train = ["LwF", "SI", "EWC"]
-devices = [0, 1, 2]
+all_datasets = ["Split-CIFAR100"]
+freeze = ["False"]
+models = ["Hyper2d"]
 
 training_files = {
     "EWC": "train_baseline_EWC.py",
@@ -26,20 +29,54 @@ config_files = {
     "Hyper2d": "hyper2d.py"
 }
 
-# execute the training script with its corresponding configuration file
-for model, dev in zip(train, devices):
-    with open(f"configs/{config_files[model]}", "r") as f:
-        content = f.read()
-        for key, value in changes.items():
-            content = content.replace(key, value)
-    
-    with open(f"configs/{config_files[model]}-temp.py", "w") as f:
-        f.write(content)
+# do squeue -u mpilligua and check how many jobs are running
+ret = int(os.popen("squeue -u mpilligua | wc -l").read())
+for fr in freeze:
+    for dataset in all_datasets:
+        changes = {"NAME-DATASET": dataset, # Split-MNIST, Split-CIFAR100, TinyImageNet
+                    "FROOZE_BKBN": fr}
         
-    os.system(f"sbatch ztrain {training_files[model]} configs/{config_files[model]}-temp.py")
+        for model in models:
+            ret = int(os.popen("squeue -u mpilligua | wc -l").read())
+            while ret > 6:
+                ret = int(os.popen("squeue -u mpilligua | wc -l").read())
+                print(f"Jobs running: {ret}", end="\r")
+                os.system("sleep 100")
+
+            print(f"Jobs running: {ret} - Starting new job with {model} and {dataset} and {fr}")
+            with open(f"configs/{config_files[model]}", "r") as f:
+                content = f.read()
+                for key, value in changes.items():
+                    content = content.replace(key, value)
+            
+            with open(f"configs/{config_files[model]}-temp.py", "w") as f:
+                f.write(content)
+                
+            print(f"sbatch ztrain {training_files[model]} configs/{config_files[model]}-temp.py")
+            os.system(f"sbatch ztrain {training_files[model]} configs/{config_files[model]}-temp.py")
+            
+            sleep(10)
+            os.remove(f"configs/{config_files[model]}-temp.py")
     
-from time import sleep
-sleep(10)
-for model in train:
-    os.remove(f"configs/{config_files[model]}-temp.py")
+
+# # train = ["LwF", "SI", "EWC"]
+# devices = [0, 1, 2]
+
+
+# # execute the training script with its corresponding configuration file
+# for model, dev in zip(models, devices):
+#     with open(f"configs/{config_files[model]}", "r") as f:
+#         content = f.read()
+#         for key, value in changes.items():
+#             content = content.replace(key, value)
+    
+#     with open(f"configs/{config_files[model]}-temp.py", "w") as f:
+#         f.write(content)
+        
+#     os.system(f"sbatch ztrain {training_files[model]} configs/{config_files[model]}-temp.py")
+    
+# from time import sleep
+# sleep(10)
+# for model in train:
+#     os.remove(f"configs/{config_files[model]}-temp.py")
     
