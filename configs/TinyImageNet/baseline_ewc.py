@@ -21,7 +21,7 @@ dataset_config = {
 model_config = {
     "backbone": "resnet50",  # Backbone architecture used for the model (e.g., "resnet50").
     "task_head_projection_size": 512,  # The size of the task-specific projection layer.}
-    "frozen_backbone": True,  # Whether to freeze the backbone during training.
+    "frozen_backbone": False,  # Whether to freeze the backbone during training.
 }
 
 # 3. Training Parameters
@@ -57,7 +57,7 @@ logging_config = {
 # 6. Miscellaneous Parameters
 # ---------------------------
 misc_config = {
-    "device": "cuda:1",  # Device for training (use "cpu" if no GPU is available).
+    "device": "cuda:3",  # Device for training (use "cpu" if no GPU is available).
     "seed": 42,  # Seed for reproducibility.
 }
 
