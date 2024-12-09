@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.models import resnet50, mobilenet_v2
-# import timm  # For EfficientNet and other models
-# from timm import create_model  # For ViT and other models from the "timm" library
+from torchvision.models import resnet50, mobilenet_v2, resnet18
+import timm  # For EfficientNet and other models
+from timm import create_model  # For ViT and other models from the "timm" library
 
 
 class ResNet50(nn.Module):
@@ -40,6 +40,35 @@ class ResNet50(nn.Module):
         # Add a lower learning rate for the pretrained parameters
         return [{'params': self.feature_extractor.parameters(), 'lr': 1e-4}]
 
+class ResNet18(nn.Module):
+    def __init__(self, pretrained=True, device="cuda"):
+        super().__init__()
+
+        # Load pretrained ResNet-50
+        resnet = resnet18(pretrained=pretrained)
+        # Remove the fully connected layer and retain only the convolutional backbone
+        self.feature_extractor = nn.Sequential(
+            *(list(resnet.children())[:-2])  # Removes FC and avg pooling
+        )
+        
+        # Add adaptive average pooling to reduce feature maps to 1x1
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        
+        # Set the number of output features (512 for ResNet-50)
+        self.num_features = resnet.fc.in_features
+        #print(self.num_features)
+        self.device = device
+        self.to(device)
+
+    def forward(self, x):
+        # Pass through ResNet backbone
+        x = self.feature_extractor(x)
+        # #print(x.shape)
+        # Global average pooling to get feature vector
+        x = self.pool(x)
+        x = x.view(x.size(0), -1)
+
+        return x
 
 class MobileNetV2(nn.Module):
     def __init__(self, pretrained=True, device="cuda"):
@@ -55,6 +84,7 @@ class MobileNetV2(nn.Module):
         
         # Set the number of output features (1280 for MobileNetV2)
         self.num_features = mobilenet.classifier[1].in_features
+        #print(self.num_features)
 
         self.device = device
         self.to(device)
@@ -81,6 +111,7 @@ class EfficientNetB0(nn.Module):
         self.model = timm.create_model('efficientnet_b0', pretrained=pretrained)
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
         self.num_features = self.model.classifier.in_features
+        #print(self.num_features)
         self.device = device
         self.to(device)
 
@@ -99,6 +130,7 @@ class ViT(nn.Module):
 
         # Load pretrained Vision Transformer
         vit = create_model('vit_base_patch16_224', pretrained=pretrained)
+        #print(vit)
         # Remove the fully connected layer and retain only the transformer backbone
         self.feature_extractor = vit.forward_features
         
@@ -107,6 +139,7 @@ class ViT(nn.Module):
         
         # Set the number of output features (768 for ViT base model)
         self.num_features = vit.head.in_features
+        #print(self.num_features)
 
         # Store the device and move the model to the correct device
         self.device = device
@@ -133,16 +166,26 @@ class ViT(nn.Module):
 # Function to initialize the backbone
 def get_backbone(name, pretrained=True, device="cuda"):
     if name == "resnet50":
+        print("ResNet50", ResNet50(pretrained, device))
         return ResNet50(pretrained, device)
+    if name == "resnet18":
+        print("ResNet18", ResNet18(pretrained, device))
+        return ResNet18(pretrained, device)
     elif name == "mobilenetv2":
+        print("MobileNetV2", MobileNetV2(pretrained, device))
         return MobileNetV2(pretrained, device)
     elif name == "efficientnetb0":
+        print("EfficientNetB0", EfficientNetB0(pretrained, device))
         return EfficientNetB0(pretrained, device)
     elif name == "vit":
+        print("ViT", ViT(pretrained, device))
         return ViT(pretrained, device)
     else:
         raise ValueError(f"Backbone {name} is not supported.")
 
+if __name__ == "__main__":
+    name = "resnet18"
+    backbone = get_backbone(name, pretrained=True, device="cuda")
 
 
 
