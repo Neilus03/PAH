@@ -1276,6 +1276,175 @@ def setup_tinyimagenet(dataset_name='TinyImageNet', data_dir='./data', num_tasks
 
 
 
+def setup_tinyimagenet_prototype(dataset_name='TinyImageNet', data_dir='./data', num_tasks=10, val_frac=0.1, test_frac=0.1, batch_size=256):
+    """
+    Sets up the TinyImageNet dataset for training and testing with prototypes.
+    Similar structure and return values as setup_dataset_prototype, but for TinyImageNet only.
+
+    Args:
+        dataset_name (str): Name of the dataset. Should be 'TinyImageNet'.
+        data_dir (str): Directory where the dataset is stored.
+        num_tasks (int): Number of tasks to split the dataset into.
+        val_frac (float): Fraction of the training data to use for validation.
+        test_frac (float): Fraction of the data to use for testing (unused here, but kept for consistency).
+        batch_size (int): Batch size for the dataloaders.
+
+    Returns:
+        dict: A dictionary with keys:
+            'timestep_tasks', 'final_test_loader', 'task_metadata', 'task_test_sets', 
+            'images_per_class', 'timestep_task_classes', 'train_prototype_image_per_class', 
+            'prototype_loader', 'task_prototypes', 'prototype_indices'.
+    """
+    if dataset_name != 'TinyImageNet':
+        raise ValueError("This setup function is for TinyImageNet only.")
+
+    train_dir = os.path.join(data_dir, 'tiny-imagenet-200', 'train')
+    val_dir = os.path.join(data_dir, 'tiny-imagenet-200', 'val')
+    annotations_file = os.path.join(val_dir, 'val_annotations.txt')
+
+    # Reorganize validation folder if needed
+    val_subdirs = [d for d in os.listdir(val_dir) if os.path.isdir(os.path.join(val_dir, d))]
+    if not val_subdirs or 'images' in val_subdirs:
+        print("Reorganizing TinyImageNet validation folder...")
+        prepare_val_folder_tinyimagenet(val_dir, annotations_file)
+        print("Reorganization complete.")
+
+    # Preprocessing
+    preprocess = transforms.Compose([
+        transforms.Resize((64, 64)),
+        transforms.ToTensor(),
+        transforms.Normalize((0.485, 0.456, 0.406),
+                             (0.229, 0.224, 0.225))
+    ])
+
+    # Load train (for prototypes and tasks) and val (as test)
+    print("Loading training and validation datasets...")
+    dataset_train_full = datasets.ImageFolder(train_dir)  # raw dataset
+    dataset_val_full = datasets.ImageFolder(val_dir)      # raw dataset used as test
+
+    num_classes = 200
+    task_classes_per_task = num_classes // num_tasks
+    timestep_task_classes = {
+        t: list(range(t * task_classes_per_task, (t + 1) * task_classes_per_task))
+        for t in range(num_tasks)
+    }
+
+    # Collect training indices per class
+    print("Collecting training indices per class...")
+    train_images_per_class = {}
+    for class_idx in tqdm(range(num_classes), desc="Class indexing"):
+        indices = [i for i, label in enumerate(dataset_train_full.targets) if label == class_idx]
+        train_images_per_class[class_idx] = indices
+
+    # Select one prototype image per class
+    print("Selecting prototypes...")
+    train_prototype_image_per_class = {}
+    prototype_indices = set()
+
+    for class_idx in range(num_classes):
+        if len(train_images_per_class[class_idx]) == 0:
+            raise ValueError(f"No training images found for class {class_idx}.")
+        prototype_idx = random.choice(train_images_per_class[class_idx])
+        prototype_indices.add(prototype_idx)
+
+        img_path = dataset_train_full.imgs[prototype_idx][0]
+        img = preprocess(Image.open(img_path).convert('RGB'))
+        train_prototype_image_per_class[class_idx] = img
+
+        # Remove prototype from training indices
+        train_images_per_class[class_idx].remove(prototype_idx)
+
+    # Prepare tasks
+    timestep_tasks = {}
+    task_test_sets = []
+    task_metadata = {}
+
+    print("Processing tasks...")
+    for t, task_classes in tqdm(timestep_task_classes.items(), desc="Processing tasks"):
+        # Filter training indices excluding prototypes
+        task_indices_train = [
+            i for i, lbl in enumerate(dataset_train_full.targets)
+            if lbl in task_classes and i not in prototype_indices
+        ]
+
+        # Filter test (val) indices
+        task_indices_test = [i for i, lbl in enumerate(dataset_val_full.targets) if lbl in task_classes]
+
+        if not task_indices_test:
+            print(f"Warning: No test images found for task {t} with classes {task_classes}.")
+            continue
+
+        # Extract images and labels for training
+        task_images_train = [dataset_train_full.imgs[i][0] for i in task_indices_train]
+        task_labels_train = [dataset_train_full.targets[i] for i in task_indices_train]
+
+        # Extract images and labels for test
+        task_images_test = [dataset_val_full.imgs[i][0] for i in task_indices_test]
+        task_labels_test = [dataset_val_full.targets[i] for i in task_indices_test]
+
+        # Map old labels to 0-based for the task
+        class_to_idx = {orig: idx for idx, orig in enumerate(task_classes)}
+        task_labels = [class_to_idx[label] for label in task_labels_train]
+        task_labels_test_mapped = [class_to_idx[label] for label in task_labels_test]
+
+        # Preprocess training images
+        task_images_train_tensor = torch.stack([preprocess(Image.open(img).convert('RGB')) for img in task_images_train])
+        task_labels_train_tensor = torch.tensor(task_labels, dtype=torch.long)
+        task_ids_train_tensor = torch.full((len(task_labels_train_tensor),), t, dtype=torch.long)
+
+        task_dataset_train = TensorDataset(task_images_train_tensor, task_labels_train_tensor, task_ids_train_tensor)
+
+        # Train/Validation split
+        train_size = int((1 - val_frac) * len(task_dataset_train))
+        val_size = len(task_dataset_train) - train_size
+        train_set, val_set = random_split(task_dataset_train, [train_size, val_size])
+
+        # Preprocess test images
+        task_images_test_tensor = torch.stack([preprocess(Image.open(img).convert('RGB')) for img in task_images_test])
+        task_labels_test_tensor = torch.tensor(task_labels_test_mapped, dtype=torch.long)
+        task_ids_test_tensor = torch.full((len(task_labels_test_tensor),), t, dtype=torch.long)
+
+        test_set = TensorDataset(task_images_test_tensor, task_labels_test_tensor, task_ids_test_tensor)
+
+        # Store metadata
+        timestep_tasks[t] = (train_set, val_set)
+        task_test_sets.append(test_set)
+        task_metadata[t] = {
+            idx: dataset_train_full.classes[orig] for idx, orig in enumerate(task_classes)
+        }
+
+    if not task_test_sets:
+        raise ValueError("No test sets were created. Please check the dataset and task splits.")
+
+    # Final test loader
+    final_test_data = ConcatDataset(task_test_sets)
+    final_test_loader = DataLoader(final_test_data, batch_size=batch_size, shuffle=True)
+    print(f"Final test size (containing all tasks): {len(final_test_data)}")
+
+    # Create a prototype loader
+    # For convenience, batch size for prototypes can be adjusted. We'll just load all at once.
+    prototype_images_tensor = torch.stack([train_prototype_image_per_class[c] for c in range(num_classes)])
+    prototype_loader = DataLoader(prototype_images_tensor, batch_size=num_classes, shuffle=False)
+
+    # Create a mapping from task_id to prototypes
+    task_prototypes = {
+        t: torch.stack([train_prototype_image_per_class[c] for c in timestep_task_classes[t]])
+        for t in range(num_tasks)
+    }
+
+    return {
+        'timestep_tasks': timestep_tasks,
+        'final_test_loader': final_test_loader,
+        'task_metadata': task_metadata,
+        'task_test_sets': task_test_sets,
+        'images_per_class': train_images_per_class,
+        'timestep_task_classes': timestep_task_classes,
+        'train_prototype_image_per_class': train_prototype_image_per_class,
+        'prototype_loader': prototype_loader,
+        'task_prototypes': task_prototypes,
+        'prototype_indices': prototype_indices
+    }
+    
 class MinimumSubsetBatchSampler(Sampler):
     def __init__(self, dataset, batch_size, task_classes, images_per_class):
         self.dataset = dataset
