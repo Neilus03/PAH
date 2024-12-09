@@ -72,15 +72,19 @@ logger.log(f"Device: {device}")
 logger.log(f"Random seed: {config['misc']['seed']}")
 
 ### Define preprocessing transform and load a batch to inspect it:
-data = setup_dataset_prototype(
-    dataset_name=config['dataset']['dataset'], 
-    data_dir=config["dataset"]["data_dir"], 
-    num_tasks=config['dataset']['NUM_TASKS'], 
-    val_frac=config['dataset']['VAL_FRAC'], 
-    test_frac=config['dataset']['TEST_FRAC'], 
-    batch_size=config['dataset']['BATCH_SIZE']
-)
-
+if config["dataset"]["dataset"] != "TinyImageNet":
+    data = setup_dataset(dataset_name = config["dataset"]["dataset"],
+                        data_dir = config["dataset"]["data_dir"], 
+                        num_tasks=config["dataset"]["NUM_TASKS"],
+                        val_frac=config["dataset"]["VAL_FRAC"],
+                        test_frac=config["dataset"]["TEST_FRAC"],
+                        batch_size=config["dataset"]["BATCH_SIZE"])
+else:
+    data = setup_tinyimagenet(data_dir = config["dataset"]["data_dir"], 
+                        num_tasks=config["dataset"]["NUM_TASKS"],
+                        val_frac=config["dataset"]["VAL_FRAC"],
+                        test_frac=config["dataset"]["TEST_FRAC"],
+                        batch_size=config["dataset"]["BATCH_SIZE"])
 num_tasks = len(data['task_metadata'])
 num_classes_per_task = len(data['task_metadata'][0])
 
