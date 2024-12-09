@@ -34,7 +34,7 @@ training_config = {
     "stability": 3,  # Stability weight for soft distillation loss.
     "weight_hard_loss_prototypes": 0.2,  # Weight for the hard loss applied to the prototypes.
     "weight_soft_loss_prototypes": 0.05,  # Weight for the soft loss applied to the prototypes.
-    "freeze_backbone": False,  # Whether to freeze the backbone during training.
+    #"freeze_backbone": False,  # Whether to freeze the backbone during training.
     "backbone": "resnet50",  # to choose from resnet50, mobilenetv2, efficientnetb0
     "optimizer": "AdamW",  # Optimizer used for training. AdamW is used here.
 }
