@@ -31,6 +31,7 @@ from networks.networks_baseline import MultitaskModel_Baseline, TaskHead_Baselin
 
 from utils import *
 
+
 config = config_load(sys.argv[1])["config"]
 
 device = torch.device(config["misc"]["device"] if torch.cuda.is_available() else "cpu")
@@ -106,7 +107,7 @@ prev_test_accs = []
 logger.log(f"Starting training for {config['logging']['name']}")
 
 #Training loop
-with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config, group=config['logging']['group']) as run:
+with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', config=config) as run:
     #count_optimizer_parameters(optimizer, logger)
     
     # Outer loop for each task, in sequence

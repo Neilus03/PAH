@@ -52,6 +52,7 @@ import logging
 import pdb
 import sys
 
+
 config = config_load(sys.argv[1])["config"]
 
 device = torch.device(config["misc"]["device"] if torch.cuda.is_available() else "cpu")
@@ -139,7 +140,7 @@ prev_test_accs_prot = []
 
 logger.log(f"Starting training for {config['logging']['name']}")
 
-with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config, group=config['logging']['group']) as run:
+with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', config=config) as run:
     if config['model']['initialize_prot_w_images']:
         wandb.log({"all prototypes": wandb.Image(results_dir + '/prototypes.png')})
 

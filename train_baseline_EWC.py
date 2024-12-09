@@ -29,6 +29,7 @@ from networks.networks_baseline import MultitaskModel_Baseline, TaskHead_Baselin
 
 from utils import *
 
+
 # ------------------ EWC Auxiliary Functions ------------------ #
 def compute_fisher(model, dataset_loader, device, sample_size=200):
     """
@@ -145,7 +146,7 @@ old_params = None
 fisher = None
 ewc_lambda = config["training"]["ewc_lambda"]
 
-with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config, group=config['logging']['group']) as run:
+with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', config=config) as run:
     #count_optimizer_parameters(optimizer, logger)
     
     #Outer loop for each task, in sequence

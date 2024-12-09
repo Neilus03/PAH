@@ -1,4 +1,6 @@
 import os
+import wandb
+
 
 changes = {"NAME-DATASET": "Split-CIFAR100",
             "FROOZE_BKBN": "False"}

@@ -51,6 +51,7 @@ import sys
 
 import random
 
+
 config = config_load(sys.argv[1])["config"]
 device = torch.device(config["misc"]["device"] if torch.cuda.is_available() else "cpu")
 seed_everything(config['misc']['seed'])
@@ -121,8 +122,7 @@ metrics = {
 prev_test_accs = []
 logger.log(f"Starting training for {config['logging']['name']}")
 
-with wandb.init(project='HyperCMTL', name=f'{name_run}', config=config, group=config['logging']['group']) as run:
-
+with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', config=config) as run:
     # Outer loop over each task, in sequence
     for t, (task_train, task_val) in data['timestep_tasks'].items():
         task_train.num_classes = len(data['timestep_task_classes'][t])
