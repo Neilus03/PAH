@@ -23,6 +23,8 @@ import time
 import os
 from easydict import EasyDict 
 from time import sleep
+import shutil
+
 
 
 def inspect_batch(images, labels=None, predictions=None, class_names=None, title=None,
@@ -1056,22 +1058,6 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
             for t in range(num_tasks)
         }
 
-    elif dataset_name == 'TinyImageNet':
-        dataset_train = datasets.ImageFolder(os.path.join(data_dir, 'tiny-imagenet-200', 'train'))
-        dataset_test = datasets.ImageFolder(os.path.join(data_dir, 'tiny-imagenet-200', 'val'))
-        num_classes = 200
-        preprocess = transforms.Compose([
-            transforms.Resize((64, 64)),
-            transforms.ToTensor(),
-            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-        ])
-        task_classes_per_task = num_classes // num_tasks
-        timestep_task_classes = {
-            t: list(range(t * task_classes_per_task, (t + 1) * task_classes_per_task))
-            for t in range(num_tasks)
-        }
-
-
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
     
@@ -1098,15 +1084,6 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
             task_indices_test = [i for i, label in enumerate(dataset_test.targets) if label in task_classes]
             task_images_test = [Image.fromarray(dataset_test.data[i]) for i in task_indices_test]
             task_labels_test = [label for i, label in enumerate(dataset_test.targets) if label in task_classes]
-
-        elif dataset_name == 'TinyImageNet':
-            task_indices_train = [i for i, (_, label) in enumerate(dataset_train.samples) if label in task_classes]
-            task_images_train = [dataset_train[i][0] for i in task_indices_train]
-            task_labels_train = [label for i, (_, label) in enumerate(dataset_train.samples) if label in task_classes]
-            task_indices_test = [i for i, (_, label) in enumerate(dataset_test.samples) if label in task_classes]
-            task_images_test = [dataset_test[i][0] for i in task_indices_test]
-            task_labels_test = [label for i, (_, label) in enumerate(dataset_test.samples) if label in task_classes]
-
         
         # Map old labels to 0-based labels for the task
         class_to_idx = {orig: idx for idx, orig in enumerate(task_classes)}
@@ -1139,15 +1116,10 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
         # Store datasets and metadata
         timestep_tasks[t] = (train_set, val_set)
         task_test_sets.append(test_set)
-        if dataset_name == 'TinyImagenet':
-            task_metadata[t] = {
-                idx: os.path.basename(dataset_train.classes[orig]) for orig, idx in class_to_idx.items()
-            }
-        else:
-            task_metadata[t] = {
-                idx: dataset_train.classes[orig] if hasattr(dataset_train, 'classes') else str(orig)
-                for orig, idx in class_to_idx.items()
-            }
+        task_metadata[t] = {
+            idx: dataset_train.classes[orig] if hasattr(dataset_train, 'classes') else str(orig)
+            for orig, idx in class_to_idx.items()
+        }
 
     # Final datasets
     final_test_data = ConcatDataset(task_test_sets)
@@ -1163,6 +1135,145 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
         'images_per_class': train_images_per_class,
         'timestep_task_classes': timestep_task_classes
     }
+
+
+def prepare_val_folder_tinyimagenet(val_dir, annotations_file):
+    """
+    Reorganizes the TinyImageNet validation folder into class-specific subdirectories.
+    """
+    with open(annotations_file, 'r') as f:
+        lines = f.readlines()
+
+    # Move each validation image into a subdirectory corresponding to its class
+    for line in tqdm(lines, desc="Reorganizing validation images"):
+        parts = line.strip().split('\t')
+        if len(parts) < 2:
+            print(f"Skipping malformed line: {line}")
+            continue
+        img, class_name = parts[:2]
+        src = os.path.join(val_dir, 'images', img)
+        dst_dir = os.path.join(val_dir, class_name)
+        os.makedirs(dst_dir, exist_ok=True)
+        dst = os.path.join(dst_dir, img)
+        if not os.path.exists(dst):
+            shutil.move(src, dst)
+
+    # After moving all images, remove the `images` directory if it exists
+    images_dir = os.path.join(val_dir, 'images')
+    if os.path.exists(images_dir):
+        shutil.rmtree(images_dir)
+
+
+def setup_tinyimagenet(dataset_name='TinyImageNet', data_dir='./data', num_tasks=10, val_frac=0.1, test_frac=0.1, batch_size=256):
+    """
+    Sets up the TinyImageNet dataset, dataloaders, and metadata for training and testing.
+    """
+    if dataset_name != 'TinyImageNet':
+        raise ValueError("This setup function is for TinyImageNet only.")
+
+    train_dir = os.path.join(data_dir, 'tiny-imagenet-200', 'train')
+    val_dir = os.path.join(data_dir, 'tiny-imagenet-200', 'val')
+    annotations_file = os.path.join(val_dir, 'val_annotations.txt')
+
+    # Reorganize the validation folder if needed
+    val_subdirs = [d for d in os.listdir(val_dir) if os.path.isdir(os.path.join(val_dir, d))]
+    if not val_subdirs or 'images' in val_subdirs:
+        print("Reorganizing TinyImageNet validation folder...")
+        prepare_val_folder_tinyimagenet(val_dir, annotations_file)
+        print("Reorganization complete.")
+
+    preprocess = transforms.Compose([
+        transforms.Resize((64, 64)),
+        transforms.ToTensor(),
+        transforms.Normalize((0.485, 0.456, 0.406),
+                             (0.229, 0.224, 0.225))
+    ])
+
+    print("Loading training and validation datasets...")
+    dataset_train_full = datasets.ImageFolder(train_dir)
+    dataset_val_full = datasets.ImageFolder(val_dir)
+
+    num_classes = 200
+    task_classes_per_task = num_classes // num_tasks
+    # The classes are assigned based on alphabetical order in both train and val
+    # This ensures consistent indexing if both have the same classes.
+    timestep_task_classes = {
+        t: list(range(t * task_classes_per_task, (t + 1) * task_classes_per_task))
+        for t in range(num_tasks)
+    }
+
+    timestep_tasks = {}
+    task_test_sets = []
+    task_metadata = {}
+    train_images_per_class = {}
+
+    print("Processing training images per class...")
+    for class_idx in tqdm(range(num_classes), desc="Processing training images"):
+        # dataset_train_full.targets are numeric labels corresponding to dataset_train_full.classes
+        indices = [i for i, label in enumerate(dataset_train_full.targets) if label == class_idx]
+        train_images_per_class[class_idx] = indices
+
+    print("Processing tasks...")
+    for t, task_classes in tqdm(timestep_task_classes.items(), desc="Processing tasks"):
+        # Filter by numeric labels (these match the classes in dataset_train_full and dataset_val_full)
+        task_indices_train = [i for i, lbl in enumerate(dataset_train_full.targets) if lbl in task_classes]
+        task_indices_test = [i for i, lbl in enumerate(dataset_val_full.targets) if lbl in task_classes]
+
+        if not task_indices_test:
+            print(f"Warning: No test images found for task {t} with classes {task_classes}.")
+            continue
+
+        task_images_train = [dataset_train_full.imgs[i][0] for i in task_indices_train]
+        task_labels_train = [dataset_train_full.targets[i] for i in task_indices_train]
+
+        task_images_test = [dataset_val_full.imgs[i][0] for i in task_indices_test]
+        task_labels_test = [dataset_val_full.targets[i] for i in task_indices_test]
+
+        # Map old labels (which are numeric indices corresponding to classes) to 0-based for the task
+        class_to_idx = {orig: idx for idx, orig in enumerate(task_classes)}
+        task_labels = [class_to_idx[lbl] for lbl in task_labels_train]
+        task_labels_test_mapped = [class_to_idx[lbl] for lbl in task_labels_test]
+
+        # Preprocess images
+        task_images_train_tensor = torch.stack([preprocess(Image.open(img).convert('RGB')) for img in task_images_train])
+        task_labels_train_tensor = torch.tensor(task_labels, dtype=torch.long)
+        task_ids_train_tensor = torch.full((len(task_labels_train_tensor),), t, dtype=torch.long)
+        task_dataset_train = TensorDataset(task_images_train_tensor, task_labels_train_tensor, task_ids_train_tensor)
+
+        # Train/Val split from training set
+        train_size = int((1 - val_frac) * len(task_dataset_train))
+        val_size = len(task_dataset_train) - train_size
+        train_set, val_set = random_split(task_dataset_train, [train_size, val_size])
+
+        # Test set from val directory
+        task_images_test_tensor = torch.stack([preprocess(Image.open(img).convert('RGB')) for img in task_images_test])
+        task_labels_test_tensor = torch.tensor(task_labels_test_mapped, dtype=torch.long)
+        task_ids_test_tensor = torch.full((len(task_labels_test_tensor),), t, dtype=torch.long)
+        test_set = TensorDataset(task_images_test_tensor, task_labels_test_tensor, task_ids_test_tensor)
+
+        timestep_tasks[t] = (train_set, val_set)
+        task_test_sets.append(test_set)
+        # Map from task label idx -> actual class name (WordNet synset)
+        task_metadata[t] = {
+            idx: dataset_train_full.classes[orig] for idx, orig in enumerate(task_classes)
+        }
+
+    if not task_test_sets:
+        raise ValueError("No test sets were created. Check dataset integrity and task splits.")
+
+    final_test_data = ConcatDataset(task_test_sets)
+    final_test_loader = DataLoader(final_test_data, batch_size=batch_size, shuffle=True)
+    print(f"Final test size (containing all tasks): {len(final_test_data)}")
+
+    return {
+        'timestep_tasks': timestep_tasks,
+        'final_test_loader': final_test_loader,
+        'task_metadata': task_metadata,
+        'task_test_sets': task_test_sets,
+        'images_per_class': train_images_per_class,
+        'timestep_task_classes': timestep_task_classes
+    }
+
 
 
 class MinimumSubsetBatchSampler(Sampler):

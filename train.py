@@ -1,5 +1,6 @@
 import os
 from time import sleep
+import wandb
 
 all_datasets = ["Split-CIFAR100"]
 freeze = ["False", "True"]
