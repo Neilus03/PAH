@@ -447,6 +447,9 @@ class HyperCMTL_seq_simple(nn.Module):
         if self.frozen_backbone:
             for param in self.backbone.parameters():
                 param.requires_grad = False
+        else:
+            for param in self.backbone.parameters():
+                param.requires_grad = True
 
         # Task head
         self.task_head = TaskHead_simple(input_size=self.backbone.num_features,
@@ -546,6 +549,9 @@ class HyperCMTL_seq_simple_2d(nn.Module):
         if self.frozen_backbone:
             for param in self.backbone.parameters():
                 param.requires_grad = False
+        else:
+            for param in self.backbone.parameters():
+                param.requires_grad = True
 
         # Task head
         self.task_head = TaskHead_simple(input_size=self.backbone.num_features,
@@ -1196,6 +1202,9 @@ class HyperCMTL_seq_prototype_simple(nn.Module):
         # freeze the backbone for prototype extraction
         for param in self.backbone_prototype_frozen.parameters():
            param.requires_grad = False
+        else:
+            for param in self.backbone_prototype_frozen.parameters():
+                param.requires_grad = True
             
 
         # Task head
