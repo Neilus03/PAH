@@ -1029,6 +1029,7 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
 
     # Dataset-specific settings
     if dataset_name == 'Split-MNIST':
+        num_tasks = 5
         dataset_train = datasets.MNIST(root=data_dir, train=True, download=True)
         dataset_test = datasets.MNIST(root=data_dir, train=False, download=True)
         
@@ -1528,10 +1529,10 @@ def setup_dataset_prototype(dataset_name, data_dir='./data', num_tasks=10, val_f
             transforms.ToTensor(),
             transforms.Normalize((0.5,), (0.5,))
         ])
-        task_classes_per_task = num_classes // num_tasks
+        task_classes_per_task = num_classes // 5
         timestep_task_classes = {
             t: list(range(t * task_classes_per_task, (t + 1) * task_classes_per_task))
-            for t in range(num_tasks)
+            for t in range(5)
         }
 
     elif dataset_name == 'Split-CIFAR100':
@@ -1611,6 +1612,7 @@ def setup_dataset_prototype(dataset_name, data_dir='./data', num_tasks=10, val_f
                 i for i, label in enumerate(dataset_train.targets)
                 if label in task_classes and i not in prototype_indices
             ]
+            num_tasks = 5
             task_images_train = [Image.fromarray(np.array(dataset_train.data[i]), mode='L') for i in task_indices_train]
             task_labels_train = [label for i, label in enumerate(dataset_train.targets) if label in task_classes and i not in prototype_indices]
             task_indices_test = [i for i, label in enumerate(dataset_test.targets) if label in task_classes]

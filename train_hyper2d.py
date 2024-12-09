@@ -117,6 +117,7 @@ if config['model']['initialize_prot_w_images']:
         prototypes_inititalization[t] = prototypes.reshape(-1)
 
         for i in range(len(data['task_metadata'][t])):
+            print(prototypes[i].shape)
             ax[t][i].imshow(prototypes[i].permute(1, 2, 0), cmap='gray')
             ax[t][i].axis('off')
             ax[t][i].set_title(data['task_metadata'][t][i])
@@ -150,7 +151,7 @@ prev_test_accs_prot = []
 
 logger.log(f"Starting training for {config['logging']['name']}")
 
-with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', config=config) as run:
+with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', config=config, group=config['logging']['group']) as run:
     if config['model']['initialize_prot_w_images']:
         wandb.log({"all prototypes": wandb.Image(results_dir + '/prototypes.png')})
 

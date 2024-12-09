@@ -133,7 +133,7 @@ prev_test_accs = []
 
 logger.log(f"Starting training for {config['logging']['name']}")
 
-with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', config=config) as run:
+with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', config=config, group=config['logging']['group']) as run:
     # outer loop over each task, in sequence
     for t, (task_train, task_val) in data['timestep_tasks'].items():
         task_train.num_classes = len(data['timestep_task_classes'][t])

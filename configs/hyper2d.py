@@ -9,7 +9,7 @@ root = os.path.dirname(os.path.abspath(__file__))
 # ----------------------
 dataset_config = {
     "dataset": "NAME-DATASET",  # Dataset used for training. You can switch to "Split-MNIST" or other datasets.
-    "NUM_TASKS": 10,  # Number of tasks for the dataset. Typically 5 for Split-MNIST and 10 for Split-CIFAR100.
+    "NUM_TASKS": NUM_TASKS_VAR,  # Number of tasks for the dataset. Typically 5 for Split-MNIST and 10 for Split-CIFAR100.
     "BATCH_SIZE": 256,  # Batch size used during training.
     "VAL_FRAC": 0.1,  # Fraction of the dataset to be used for validation.
     "TEST_FRAC": 0.1,  # Fraction of the dataset to be used for testing.

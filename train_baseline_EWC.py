@@ -155,7 +155,7 @@ old_params = None
 fisher = None
 ewc_lambda = config["training"]["ewc_lambda"]
 
-with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', config=config) as run:
+with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', config=config, group=config['logging']['group']) as run:
     #count_optimizer_parameters(optimizer, logger)
     
     #Outer loop for each task, in sequence
