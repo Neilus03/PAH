@@ -4,11 +4,11 @@ from time import sleep
 import threading
 
 # Define your datasets, freeze options, models, and devices
-all_datasets = ["Split-MNIST", "Split-CIFAR100", "TinyImageNet"]
+all_datasets = ["TinyImageNet"]
 freeze = ["False", "True"]
 models = ["EWC", "SI", "LwF"]
 devices = ["0", "1", "2", "3", "4", "5"]
-
+backbones = ["resnet18", "mobilenetv2", "efficientnetb0", "resnet50"]
 # Mapping of models to their corresponding training and config files
 training_files = {
     "EWC": "train_baseline_EWC.py",
@@ -88,44 +88,46 @@ monitor_thread.start()
 # Iterate over all combinations of freeze options, datasets, and models
 for fr in freeze:
     for dataset in all_datasets:
-        changes = {
-            "NAME-DATASET": dataset,
-            "FREEZE_BKBN": fr,
-            "NUM_TASKS_VAR": "10" if dataset == "Split-CIFAR100" else "20"
-        }
+        for backbone in backbones:
+            changes = {
+                "NAME-DATASET": dataset,
+                "FREEZE_BKBN": fr,
+                "NUM_TASKS_VAR": "10",# if dataset == "Split-CIFAR100" else "20",
+                "BACKBONE": backbone
+            }
 
-        for model in models:
-            # Wait for a free GPU and get its ID
-            selected_gpu = wait_for_free_gpu()
-            print(f"Starting new job with model={model}, dataset={dataset}, freeze={fr} on GPU={selected_gpu}")
+            for model in models:
+                # Wait for a free GPU and get its ID
+                selected_gpu = wait_for_free_gpu()
+                print(f"Starting new job with model={model}, dataset={dataset}, freeze={fr}, backbone={backbone} on GPU={selected_gpu}")
 
-            # Read and modify the config file
-            config_path = f"configs/{config_files[model]}"
-            with open(config_path, "r") as f:
-                content = f.read()
-                for key, value in changes.items():
-                    content = content.replace(key, value)
+                # Read and modify the config file
+                config_path = f"configs/{config_files[model]}"
+                with open(config_path, "r") as f:
+                    content = f.read()
+                    for key, value in changes.items():
+                        content = content.replace(key, value)
 
-            # Write the modified config to a temporary file
-            temp_config = f"configs/{config_files[model]}-temp.py"
-            with open(temp_config, "w") as f:
-                f.write(content)
+                # Write the modified config to a temporary file
+                temp_config = f"configs/{config_files[model]}-temp.py"
+                with open(temp_config, "w") as f:
+                    f.write(content)
 
-            # Construct the command to run the training script
-            cmd = (
-                f"CUDA_VISIBLE_DEVICES={selected_gpu} "
-                f"nohup python {training_files[model]} {temp_config} "
-                f"> {temp_config}.log 2>&1 &"
-            )
-            print(f"Executing command: {cmd}")
+                # Construct the command to run the training script
+                cmd = (
+                    f"CUDA_VISIBLE_DEVICES={selected_gpu} "
+                    f"nohup python {training_files[model]} {temp_config} "
+                    f"> {temp_config}.log 2>&1 &"
+                )
+                print(f"Executing command: {cmd}")
 
-            # Launch the training script in the background
-            subprocess.Popen(cmd, shell=True)
+                # Launch the training script in the background
+                subprocess.Popen(cmd, shell=True)
 
-            # Brief pause to allow the system to recognize the new job
-            sleep(15)
+                # Brief pause to allow the system to recognize the new job
+                sleep(15)
 
-            # Remove the temporary config file
-            os.remove(temp_config)
+                # Remove the temporary config file
+                os.remove(temp_config)
 
 print("All jobs have been submitted.")

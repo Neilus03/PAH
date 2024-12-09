@@ -66,10 +66,10 @@ else:
                         batch_size=config["dataset"]["BATCH_SIZE"])
 backbone_dict = {
     'resnet50': ResNet50,
-    'resnet18': ResNet18,
     'mobilenetv2': MobileNetV2,
     'efficientnetb0': EfficientNetB0,
-    'vit': ViT
+    'vit': ViT,
+    'resnet18': ResNet18
 }
 
 backbone_name = config["model"]["backbone"]

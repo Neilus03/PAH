@@ -1046,6 +1046,7 @@ def setup_dataset(dataset_name, data_dir='./data', num_tasks=10, val_frac=0.1, t
         }
 
     elif dataset_name == 'Split-CIFAR100':
+        
         dataset_train = datasets.CIFAR100(root=data_dir, train=True, download=True)
         dataset_test = datasets.CIFAR100(root=data_dir, train=False, download=True)
         num_classes = 100

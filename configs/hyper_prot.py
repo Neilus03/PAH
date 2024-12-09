@@ -9,7 +9,7 @@ root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # ----------------------
 dataset_config = {
     "dataset": "NAME-DATASET",  # Dataset used for training. You can switch to "Split-MNIST" or other datasets.
-    "NUM_TASKS": 10,  # Number of tasks for the dataset. Typically 5 for Split-MNIST and 10 for Split-CIFAR100.
+    "NUM_TASKS": NUM_TASKS_VAR,  # Number of tasks for the dataset. Typically 5 for Split-MNIST and 10 for Split-CIFAR100.
     "BATCH_SIZE": 256,  # Batch size used during training.
     "VAL_FRAC": 0.1,  # Fraction of the dataset to be used for validation.
     "TEST_FRAC": 0.1,  # Fraction of the dataset to be used for testing.
@@ -32,7 +32,7 @@ lr_config = {
 # 2. Model Hyperparameters
 # ------------------------
 model_config = {
-    "backbone": "resnet50",  # Backbone architecture used for the model (e.g., "resnet50").
+    "backbone": "BACKBONE",  # Backbone architecture used for the model (e.g., "resnet50").
     "hyper_hidden_features": 1024,
     "hyper_hidden_layers": 6,
     "projection_prototypes": 4096,
