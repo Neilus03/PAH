@@ -57,25 +57,3 @@ for fr in freeze:
             sleep(10)
             os.remove(f"configs/{config_files[model]}-temp.py")
     
-
-# # train = ["LwF", "SI", "EWC"]
-# devices = [0, 1, 2]
-
-
-# # execute the training script with its corresponding configuration file
-# for model, dev in zip(models, devices):
-#     with open(f"configs/{config_files[model]}", "r") as f:
-#         content = f.read()
-#         for key, value in changes.items():
-#             content = content.replace(key, value)
-    
-#     with open(f"configs/{config_files[model]}-temp.py", "w") as f:
-#         f.write(content)
-        
-#     os.system(f"sbatch ztrain {training_files[model]} configs/{config_files[model]}-temp.py")
-    
-# from time import sleep
-# sleep(10)
-# for model in train:
-#     os.remove(f"configs/{config_files[model]}-temp.py")
-    
