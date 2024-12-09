@@ -9,13 +9,15 @@ from networks.metamodules import FCBlock, BatchLinear, HyperNetwork, get_subdict
 from networks.torchmeta.modules import MetaModule
 from copy import deepcopy
 
-from networks.backbones import ResNet50, MobileNetV2, EfficientNetB0
+from networks.backbones import ResNet50, MobileNetV2, EfficientNetB0, ViT, ResNet18
 import random
 
 backbone_dict = {
     'resnet50': ResNet50,
+    'resnet18': ResNet18,
     'mobilenetv2': MobileNetV2,
-    'efficientnetb0': EfficientNetB0
+    'efficientnetb0': EfficientNetB0,
+    'vit': ViT
 }
 
 class HyperCMTL(nn.Module):

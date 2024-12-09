@@ -19,7 +19,7 @@ dataset_config = {
 # 2. Model Hyperparameters
 # ------------------------
 model_config = {
-    "backbone": "resnet50",  # Backbone architecture used for the model (e.g., "resnet50").
+    "backbone": "efficientnetb0",  # Backbone architecture used for the model (e.g., "resnet50").
     "task_head_projection_size": 512,  # The size of the task-specific projection layer.}
     "frozen_backbone": True,  # Whether to freeze the backbone during training.
 }
