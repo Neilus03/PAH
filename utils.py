@@ -1839,6 +1839,8 @@ def setup_optimizer(model, lr, l2_reg, optimizer):
     elif optimizer == "AdamW":
         return torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=l2_reg)
     
+
+    
         
 def count_optimizer_parameters(optimizer: torch.optim.Optimizer, logger=None) -> None:
     """

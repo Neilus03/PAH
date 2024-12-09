@@ -24,7 +24,7 @@ import time
 # Add the project root directory to PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from networks.backbones import ResNet50, MobileNetV2, EfficientNetB0, ViT
+from networks.backbones import ResNet50, MobileNetV2, EfficientNetB0, ViT, ResNet18
 from networks.networks_baseline import MultitaskModel_Baseline, TaskHead_Baseline
 
 from utils import *
@@ -117,7 +117,8 @@ backbone_dict = {
     'resnet50': ResNet50,
     'mobilenetv2': MobileNetV2,
     'efficientnetb0': EfficientNetB0,
-    'vit': ViT
+    'vit': ViT,
+    'resnet18': ResNet18
 }
 
 backbone_name = config["model"]["backbone"]
