@@ -3,13 +3,13 @@
 import sys
 import os
 # Add the root of the project 
-root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+root = os.path.dirname(os.path.abspath(__file__))
 
 # 1. Dataset Parameters
 # ----------------------
 dataset_config = {
-    "dataset": "NAME-DATASET",  # Dataset used for training. You can switch to "Split-MNIST" or other datasets.
-    "NUM_TASKS": 10,  # Number of tasks for the dataset. Typically 5 for Split-MNIST and 10 for Split-CIFAR100.
+    "dataset": "TinyImageNet",  # Dataset used for training. You can switch to "Split-MNIST" or other datasets.
+    "NUM_TASKS": 20,  # Number of tasks for the dataset. Typically 5 for Split-MNIST and 10 for Split-CIFAR100.
     "BATCH_SIZE": 256,  # Batch size used during training.
     "VAL_FRAC": 0.1,  # Fraction of the dataset to be used for validation.
     "TEST_FRAC": 0.1,  # Fraction of the dataset to be used for testing.
@@ -17,16 +17,14 @@ dataset_config = {
 }
 
 lr_config = {
-        "hyper_emb": 1e-3,  # Learning rate for the hyper-embedding network.
-        "hyper_emb_reg": 1e-4,  # Learning rate for the hyper-embedding network.
-        "backbone": 1e-4,  # Learning rate for the backbone network.
-        "backbone_reg": 1e-5,  # Learning rate for the backbone network.
-        "task_head": 1e-4,  # Learning rate for the task head.
-        "task_head_reg": 1e-3,  # Learning rate for the task head.
-        "hypernet": 1e-4,  # Learning rate for the hypernetwork.
-        "hypernet_reg": 1e-3,  # Learning rate for the hypernetwork.
-        "linear_prototypes": 1e-3,  # Learning rate for the linear layer of the prototypes.
-        "linear_prototypes_reg": 1e-5,  # Learning rate for the linear layer of the prototypes.
+                "hyper_emb": 1e-3,  # Learning rate for the hyper-embedding network.
+                "hyper_emb_reg": 1e-4,  # Learning rate for the hyper-embedding network.
+                "backbone": 1e-4,  # Learning rate for the backbone network.
+                "backbone_reg": 1e-5,  # Learning rate for the backbone network.
+                "task_head": 1e-4,  # Learning rate for the task head.
+                "task_head_reg": 1e-3,  # Learning rate for the task head.
+                "hypernet": 1e-4,  # Learning rate for the hypernetwork.
+                "hypernet_reg": 1e-3,  # Learning rate for the hypernetwork.
 }
 
 # 2. Model Hyperparameters
@@ -35,13 +33,13 @@ model_config = {
     "backbone": "resnet50",  # Backbone architecture used for the model (e.g., "resnet50").
     "hyper_hidden_features": 1024,
     "hyper_hidden_layers": 6,
-    "projection_prototypes": 4096,
     "frozen_backbone": False,  # Whether to freeze the backbone during training.
-    "emb_size":1024,
-    "mean_initialization_emb": 0,  # Mean for the initialization of the prototypes.
-    "std_initialization_emb": 0.01,  # Standard deviation for the initialization of the prototypes.
-    "lr_config": lr_config,
-    }
+    "prototypes_channels": 1, # Number of channels of prototypes 1 for grayscale, 3 for RGB
+    "prototypes_size": 20,  # Size of the prototypes.
+    "initialize_prot_w_images": True,
+    "mean_initialization_prototypes": 0.5,  # Mean for the initialization of the prototypes.
+    "std_initialization_prototypes": 0.1,  # Standard deviation for the initialization of the prototypes.
+    "lr_config": lr_config}
 
 
 # 3. Training Parameters
@@ -60,7 +58,7 @@ training_config = {
 # 5. Logging and Visualization Parameters
 # ---------------------------------------
 frozen = "frozen" if model_config["frozen_backbone"] else ""
-name = f"Hyper-{frozen}-{model_config['backbone']}-{dataset_config['dataset']}"
+name = f"Hyper2d_i-{frozen}-{model_config['backbone']}-{dataset_config['dataset']}"
 logging_config = {
     "log_file": "training.log",  # Log file where training information will be saved.
     "log_level": "INFO",  # Logging level for the training process (can be INFO, DEBUG, etc.).
@@ -69,13 +67,12 @@ logging_config = {
     "verbose": True,  # Whether to show detailed logs for each epoch.
     "results_dir": "results",  # Folder to save the results.
     "name": name,  # or EWC_Baseline pr SI_Baseline
-    "group": "Hyper_prot",  # Group name for the experiment.
 }
 
 # 6. Miscellaneous Parameters
 # ---------------------------
 misc_config = {
-    "device": "cuda:0",  # Device for training (use "cpu" if no GPU is available).
+    "device": "cuda:1",  # Device for training (use "cpu" if no GPU is available).
     "seed": 42,  # Seed for reproducibility.
 }
 
