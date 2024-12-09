@@ -36,7 +36,7 @@ model_config = {
     "hyper_hidden_features": 1024,
     "hyper_hidden_layers": 6,
     "projection_prototypes": 4096,
-    "frozen_backbone": "FROOZE_BKBN",  # Whether to freeze the backbone during training.
+    "frozen_backbone": FREEZE_BKBN,  # Whether to freeze the backbone during training.
     "emb_size":1024,
     "mean_initialization_emb": 0,  # Mean for the initialization of the prototypes.
     "std_initialization_emb": 0.01,  # Standard deviation for the initialization of the prototypes.

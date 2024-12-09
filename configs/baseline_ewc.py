@@ -8,7 +8,7 @@ root = os.path.dirname(os.path.abspath(__file__))
 # 1. Dataset Parameters
 # ----------------------
 dataset_config = {
-    "dataset": "TinyImageNet",  # Dataset used for training. You can switch to "Split-MNIST" or other datasets.
+    "dataset": "NAME-DATASET",  # Dataset used for training. You can switch to "Split-MNIST" or other datasets.
     "NUM_TASKS": 20,  # Number of tasks for the dataset. Typically 5 for Split-MNIST and 10 for Split-CIFAR100.
     "BATCH_SIZE": 256,  # Batch size used during training.
     "VAL_FRAC": 0.1,  # Fraction of the dataset to be used for validation.
@@ -21,7 +21,7 @@ dataset_config = {
 model_config = {
     "backbone": "resnet50",  # Backbone architecture used for the model (e.g., "resnet50").
     "task_head_projection_size": 512,  # The size of the task-specific projection layer.}
-    "frozen_backbone": "FROOZE_BKBN",  # Whether to freeze the backbone during training.
+    "frozen_backbone": FREEZE_BKBN,  # Whether to freeze the backbone during training.
 }
 
 # 3. Training Parameters
@@ -35,7 +35,7 @@ training_config = {
     "ewc_lambda": 5000,  # Lambda hyperparameter for EWC.
     "weight_hard_loss_prototypes": 0.2,  # Weight for the hard loss applied to the prototypes.
     "weight_soft_loss_prototypes": 0.05,  # Weight for the soft loss applied to the prototypes.
-    "freeze_backbone": False,  # Whether to freeze the backbone during training.
+    "freeze_backbone": FREEZE_BKBN,  # Whether to freeze the backbone during training.
     "backbone": "resnet50",  # to choose from resnet50, mobilenetv2, efficientnetb0
     "optimizer": "AdamW",  # Optimizer used for training. AdamW is used here.
 }

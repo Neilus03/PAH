@@ -33,7 +33,7 @@ model_config = {
     "backbone": "resnet50",  # Backbone architecture used for the model (e.g., "resnet50").
     "hyper_hidden_features": 1024,
     "hyper_hidden_layers": 6,
-    "frozen_backbone": "FROOZE_BKBN",  # Whether to freeze the backbone during training.
+    "frozen_backbone": FREEZE_BKBN,  # Whether to freeze the backbone during training.
     "emb_size":4096,
     "mean_initialization_emb": 0.5,  # Mean for the initialization of the prototypes.
     "std_initialization_emb": 0.1,  # Standard deviation for the initialization of the prototypes.

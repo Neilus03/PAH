@@ -17,14 +17,14 @@ dataset_config = {
 }
 
 lr_config = {
-                "hyper_emb": 1e-3,  # Learning rate for the hyper-embedding network.
-                "hyper_emb_reg": 1e-4,  # Learning rate for the hyper-embedding network.
-                "backbone": 1e-4,  # Learning rate for the backbone network.
-                "backbone_reg": 1e-5,  # Learning rate for the backbone network.
-                "task_head": 1e-4,  # Learning rate for the task head.
-                "task_head_reg": 1e-3,  # Learning rate for the task head.
-                "hypernet": 1e-4,  # Learning rate for the hypernetwork.
-                "hypernet_reg": 1e-3,  # Learning rate for the hypernetwork.
+        "hyper_emb": 1e-3,  # Learning rate for the hyper-embedding network.
+        "hyper_emb_reg": 0,  # Learning rate for the hyper-embedding network.
+        "backbone": 1e-4,  # Learning rate for the backbone network.
+        "backbone_reg": 0,  # Learning rate for the backbone network.
+        "task_head": 1e-3,  # Learning rate for the task head.
+        "task_head_reg": 0,  # Learning rate for the task head.
+        "hypernet": 1e-3,  # Learning rate for the hypernetwork.
+        "hypernet_reg": 0,  # Learning rate for the hypernetwork.
 }
 
 # 2. Model Hyperparameters
@@ -33,7 +33,7 @@ model_config = {
     "backbone": "resnet50",  # Backbone architecture used for the model (e.g., "resnet50").
     "hyper_hidden_features": 1024,
     "hyper_hidden_layers": 6,
-    "frozen_backbone": "FROOZE_BKBN",  # Whether to freeze the backbone during training.
+    "frozen_backbone": FREEZE_BKBN,  # Whether to freeze the backbone during training.
     "prototypes_channels": 1, # Number of channels of prototypes 1 for grayscale, 3 for RGB
     "prototypes_size": 20,  # Size of the prototypes.
     "initialize_prot_w_images": False,
@@ -45,7 +45,7 @@ model_config = {
 # 3. Training Parameters
 # -----------------------
 training_config = {
-    "epochs_per_timestep": 12,  # Number of epochs per timestep (task).
+    "epochs_per_timestep": 15,  # Number of epochs per timestep (task).
     "temperature": 2.0,  # Temperature for distillation loss (used in knowledge distillation).
     "stability": 3,  # Stability weight for soft distillation loss.
     "weight_hard_loss_prototypes": 0.2,  # Weight for the hard loss applied to the prototypes.
@@ -74,7 +74,7 @@ logging_config = {
 # ---------------------------
 misc_config = {
     "device": "cuda:0",  # Device for training (use "cpu" if no GPU is available).
-    "seed": 42,  # Seed for reproducibility.
+    "seed": 100,  # Seed for reproducibility.
 }
 
 # 7. Evaluation Parameters
