@@ -99,9 +99,6 @@ logger.log(f"Using backbone: {config['model']['backbone']}")
 logger.log(f"Model created!")
 logger.log(f"Model initialized with freeze_backbone={config['model']['frozen_backbone']}, config={config['model']}")
 
-# Initialize the previous model
-previous_model = None
-
 # Initialize optimizer and loss function:
 loss_fn = nn.CrossEntropyLoss()
 tv_loss_fn = TotalVariationLoss()
@@ -115,7 +112,6 @@ metrics = { 'train_losses': [],
             'CL_timesteps': [], # used to draw where each new timestep begins
             'best_val_acc': 0.0,
            'steps_trained': 0,
-             'soft_losses': [], # distillation loss
           }
 
 prev_test_accs = []
@@ -172,7 +168,6 @@ with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', con
         # inner loop over the current task:
         for e in range(config['training']['epochs_per_timestep']):
             epoch_train_losses, epoch_train_accs = [], []
-            epoch_soft_losses = []
 
             progress_bar = tqdm(train_loader, ncols=100) if config["logging"]["show_progress"] else train_loader
             num_batches = len(train_loader)
@@ -197,19 +192,7 @@ with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', con
                 # print(prototypes.shape)
                 smoothness_loss = tv_loss_fn(prototypes) * config['training']['weight_smoothness_loss']
 
-                #if previous model exists, calculate distillation loss
-                soft_loss = torch.tensor(0.0).to(device)
-                if previous_model is not None:
-                    for old_task_id in range(t):
-                        with torch.no_grad():
-                    
-                            old_pred, old_pred_prot = previous_model(x, old_task_id)
-                        new_prev_pred, new_prev_pred_prot = model(x, old_task_id)
-                        soft_loss += distillation_output_loss(new_prev_pred, old_pred, config['training']['temperature']).mean().to(device)
-                        soft_loss += distillation_output_loss(new_prev_pred_prot, old_pred_prot, config['training']['temperature']).mean().to(device) * config['training']['weight_soft_loss_prototypes']
-
-                soft_loss *= config['training']['stability']
-                total_loss = hard_loss + soft_loss + prototypes_loss
+                total_loss = hard_loss
                 
                 total_loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -217,7 +200,7 @@ with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', con
 
                 accuracy_batch = get_batch_acc(pred, y)
                 
-                wandb.log({'hard_loss': hard_loss.item(), 'soft_loss': soft_loss.item(), 
+                wandb.log({'hard_loss': hard_loss.item(), 
                            'train_loss': total_loss.item(), 'prototype_loss': prototypes_loss.item(),
                            'smoothness_loss': smoothness_loss.item(),
                            'epoch': e, 'task_id': t, 'batch_idx': batch_idx, 'train_accuracy': accuracy_batch})
@@ -225,7 +208,6 @@ with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', con
                 # track loss and accuracy:
                 epoch_train_losses.append(hard_loss.item())
                 epoch_train_accs.append(accuracy_batch)
-                epoch_soft_losses.append(soft_loss.item() if isinstance(soft_loss, torch.Tensor) else soft_loss)
                 metrics['steps_trained'] += 1
 
                 if config["logging"]["show_progress"]:
@@ -245,7 +227,6 @@ with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', con
             metrics['train_accs'].extend(epoch_train_accs)
             metrics['val_losses'].append(avg_val_loss)
             metrics['val_accs'].append(avg_val_acc)
-            metrics['soft_losses'].extend(epoch_soft_losses)
 
             if config["logging"]["show_progress"]:
                 # log end-of-epoch stats:
@@ -291,8 +272,6 @@ with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', con
         prev_test_accs.append(metrics_test['task_test_accs'])
         prev_test_accs_prot.append(metrics_test['task_test_accs_prot'])
 
-        #store the current model as the previous model
-        previous_model = model.deepcopy()
 
 
     #Log final metrics
