@@ -10,10 +10,10 @@ root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 dataset_config = {
     "dataset": "NAME-DATASET",  # Dataset used for training. You can switch to "Split-MNIST" or other datasets.
     "NUM_TASKS": NUM_TASKS_VAR,  # Number of tasks for the dataset. Typically 5 for Split-MNIST and 10 for Split-CIFAR100.
-    "BATCH_SIZE": 256,  # Batch size used during training.
+    "BATCH_SIZE": BATCH_SIZE_VAR,  # Batch size used during training.
     "VAL_FRAC": 0.1,  # Fraction of the dataset to be used for validation.
     "TEST_FRAC": 0.1,  # Fraction of the dataset to be used for testing.
-    'data_dir': os.path.join(root, 'data')
+    'data_dir': "/ghome/mpilligua/AdvancedProject/TSR/data"
 }
 
 lr_config = {
@@ -33,7 +33,7 @@ lr_config = {
 # ------------------------
 model_config = {
     "backbone": "BACKBONE",  # Backbone architecture used for the model (e.g., "resnet50").
-    "hyper_hidden_features": 1024,
+    "hyper_hidden_features": HIDDEN_SIZE,
     "hyper_hidden_layers": 6,
     "projection_prototypes": 4096,
     "frozen_backbone": FREEZE_BKBN,  # Whether to freeze the backbone during training.
