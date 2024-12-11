@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.models import resnet50, mobilenet_v2, resnet18
+from torchvision.models import resnet50, mobilenet_v2, resnet18, alexnet
 import timm  # For EfficientNet and other models
 from timm import create_model  # For ViT and other models from the "timm" library
 
@@ -124,6 +124,42 @@ class EfficientNetB0(nn.Module):
     def get_optimizer_list(self):
         return [{'params': self.model.parameters(), 'lr': 1e-4}]
 
+
+class AlexNet(nn.Module):
+    def __init__(self, pretrained=True, device="cuda"):
+        super().__init__()
+
+        # Load pretrained AlexNet
+        alexnet = alexnet(pretrained=pretrained)
+        # Remove the fully connected layer and retain only the convolutional backbone
+        self.feature_extractor = nn.Sequential(
+            *(list(alexnet.children())[:-2])  # Removes FC and avg pooling
+        )
+        
+        # Add adaptive average pooling to reduce feature maps to 1x1
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        
+        # Set the number of output features (256 for AlexNet)
+        self.num_features = alexnet.classifier[6].in_features
+        #print(self.num_features)
+
+        self.device = device
+        self.to(device)
+
+    def forward(self, x):
+        # Pass through AlexNet backbone
+        x = self.feature_extractor(x)
+        #print(x.shape)
+        # Global average pooling to get feature vector
+        x = self.pool(x)
+        x = x.view(x.size(0), -1)
+
+        return x
+    
+    def get_optimizer_list(self):
+        # Add a lower learning rate for the pretrained parameters
+        return [{'params': self.feature_extractor.parameters(), 'lr': 1e-4}]
+
 class ViT(nn.Module):
     def __init__(self, pretrained=True, device="cuda"):
         super().__init__()
@@ -161,6 +197,8 @@ class ViT(nn.Module):
     def get_optimizer_list(self):
         # Add a lower learning rate for the pretrained parameters
         return [{'params': self.feature_extractor.parameters(), 'lr': 1e-4}]
+
+
 
 
 # Function to initialize the backbone
