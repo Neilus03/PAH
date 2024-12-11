@@ -21,7 +21,7 @@ dataset_config = {
 model_config = {
     "backbone": "mobilenetv2",  # Backbone architecture used for the model (e.g., "resnet50").
     "task_head_projection_size": 512,  # The size of the task-specific projection layer.}
-    "frozen_backbone": True,  # Whether to freeze the backbone during training.
+    "frozen_backbone": False,  # Whether to freeze the backbone during training.
 }
 
 # 3. Training Parameters
