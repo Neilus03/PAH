@@ -221,8 +221,10 @@ with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', con
                             multitask_model=model,
                             selected_test_sets=data['task_test_sets'][t:t+1],
                             task_test_sets=data['task_test_sets'],
-                            model_name=f'LwF at t={t}',
+                            model_name=f'hyper-indep at t={t}',
                             prev_accs=prev_test_accs,
+                            results_dir=results_dir,
+                            task_id=t,
                             verbose=True,
                             task_metadata=data['task_metadata'],
                             device=device
