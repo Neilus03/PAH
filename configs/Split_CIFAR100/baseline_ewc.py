@@ -32,7 +32,7 @@ training_config = {
     "l2_reg": 1e-6,  # L2 regularization coefficient (currently unused).
     "temperature": 2.0,  # Temperature for distillation loss (used in knowledge distillation).
     "stability": 3,  # Stability weight for soft distillation loss.
-    "ewc_lambda": 3e7,  # Lambda hyperparameter for EWC. The higher, the more the model will remember the previous task.
+    "ewc_lambda": 5e7,  # Lambda hyperparameter for EWC. The higher, the more the model will remember the previous task.
     "weight_hard_loss_prototypes": 0.2,  # Weight for the hard loss applied to the prototypes.
     "weight_soft_loss_prototypes": 0.05,  # Weight for the soft loss applied to the prototypes.
     #"freeze_backbone": False,  # Whether to freeze the backbone during training.
