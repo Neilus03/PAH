@@ -118,10 +118,10 @@ logger.log(f"Using backbone: {backbone_name}")
 
 if config["model"]["frozen_backbone"] == True:
     for name, param in backbone.named_parameters():
-        print(name)
         #freeze only x% of the backbone
         random_number = random.random()
-        if random_number < config["training"]["freezing_percentage"]:
+        freeze_percentage = config["training"]["freezing_percentage"] if "freezing_percentage" in config["training"] else 1.0
+        if random_number < freeze_percentage:
             param.requires_grad = False
         else:
             param.requires_grad = True
