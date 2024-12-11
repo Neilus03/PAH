@@ -14,18 +14,23 @@ parser.add_argument("-temperature", type=float, default=2.0, help="Temperature f
 parser.add_argument("-stability", type=float, default=3, help="Stability weight for soft loss")
 parser.add_argument("-batch_size", type=int, default=256, help="Batch size for training")
 parser.add_argument("-device", type=str, default="cuda:0", help="Device to use for training (e.g., cuda:0, cpu)")
+parser.add_argument("-data_maria", action="store_true", help="Set this flag if you are running the code on Maria")
+parser.add_argument("-num_tasks", type=int, default=None, help="Number of tasks for the dataset. Typically 5 for Split-MNIST and 10 for Split-CIFAR100")
 
 # Parse arguments
 args = parser.parse_args()
 
+if args.num_tasks is None:
+    args.num_tasks = 10 if args.dataset == "Split-CIFAR100" else 5
+
 # Dataset Configuration
 dataset_config = {
     "dataset": args.dataset,
-    "NUM_TASKS": 10 if args.dataset == "Split-CIFAR100" else 5,
+    "NUM_TASKS": args.num_tasks,
     "BATCH_SIZE": args.batch_size,
     "VAL_FRAC": 0.1,
     "TEST_FRAC": 0.1,
-    'data_dir': os.path.join(root, 'data')
+    'data_dir': os.path.join(root, 'data') if not args.data_maria else "/ghome/mpilligua/AdvancedProject/TSR/data",
 }
 
 # Learning Rate Configuration
