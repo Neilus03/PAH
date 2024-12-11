@@ -69,6 +69,64 @@ class ResNet18(nn.Module):
         x = x.view(x.size(0), -1)
 
         return x
+    
+    def get_optimizer_list(self):
+        # Add a lower learning rate for the pretrained parameters
+        return [{'params': self.feature_extractor.parameters(), 'lr': 1e-4}]   
+
+class ReducedResNet18(nn.Module):
+    def __init__(self, pretrained=False, device="cuda"):
+        super().__init__()
+
+        # Load the standard ResNet-18 model
+        resnet = resnet18(pretrained=pretrained)
+        
+        # Modify the convolutional layers to reduce feature maps
+        resnet.conv1 = nn.Conv2d(3, 64 // 3, kernel_size=7, stride=2, padding=3, bias=False)
+        resnet.bn1 = nn.BatchNorm2d(64 // 3)
+        
+        # Adjust the number of feature maps in each block
+        self.feature_extractor = nn.Sequential(
+            nn.Sequential(*self._reduce_layer(resnet.layer1, 64 // 3, 64 // 3)),
+            nn.Sequential(*self._reduce_layer(resnet.layer2, 64 // 3, 128 // 3, stride=2)),
+            nn.Sequential(*self._reduce_layer(resnet.layer3, 128 // 3, 256 // 3, stride=2)),
+            nn.Sequential(*self._reduce_layer(resnet.layer4, 256 // 3, 512 // 3, stride=2)),
+        )
+
+        # Add adaptive average pooling to reduce feature maps to 1x1
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        
+        # Set the number of output features
+        self.num_features = 512 // 3
+        self.device = device
+        self.to(device)
+
+    def _reduce_layer(self, layer, in_channels, out_channels, stride=1):
+        modified_blocks = []
+        for block in layer:
+            block.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
+            block.bn1 = nn.BatchNorm2d(out_channels)
+            block.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+            block.bn2 = nn.BatchNorm2d(out_channels)
+            if block.downsample is not None:
+                block.downsample = nn.Sequential(
+                    nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                    nn.BatchNorm2d(out_channels),
+                )
+            modified_blocks.append(block)
+            in_channels = out_channels
+        return modified_blocks
+
+    def forward(self, x):
+        x = self.feature_extractor(x)
+        x = self.pool(x)
+        x = x.view(x.size(0), -1)
+        return x
+    
+    def get_optimizer_list(self):
+        return [{'params': self.feature_extractor.parameters(), 'lr': 1e-4}]
+
+
 
 class MobileNetV2(nn.Module):
     def __init__(self, pretrained=True, device="cuda"):
@@ -130,17 +188,17 @@ class AlexNet(nn.Module):
         super().__init__()
 
         # Load pretrained AlexNet
-        alexnet = alexnet(pretrained=pretrained)
+        alexnet_ = alexnet(pretrained=pretrained)
         # Remove the fully connected layer and retain only the convolutional backbone
         self.feature_extractor = nn.Sequential(
-            *(list(alexnet.children())[:-2])  # Removes FC and avg pooling
+            *(list(alexnet_.children())[:-2])  # Removes FC and avg pooling
         )
         
         # Add adaptive average pooling to reduce feature maps to 1x1
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
         
         # Set the number of output features (256 for AlexNet)
-        self.num_features = alexnet.classifier[6].in_features
+        self.num_features = alexnet_.classifier[6].in_features
         #print(self.num_features)
 
         self.device = device
@@ -218,12 +276,20 @@ def get_backbone(name, pretrained=True, device="cuda"):
     elif name == "vit":
         print("ViT", ViT(pretrained, device))
         return ViT(pretrained, device)
+    elif name == "alexnet":
+        print("AlexNet", AlexNet(pretrained, device))
+        return AlexNet(pretrained, device)
+    elif name == "resnet18_reduced":
+        print("ReducedResNet18", ReducedResNet18(pretrained, device))
+        return ReducedResNet18(pretrained, device)
     else:
         raise ValueError(f"Backbone {name} is not supported.")
 
 if __name__ == "__main__":
     name = "resnet18"
     backbone = get_backbone(name, pretrained=True, device="cuda")
+    #print amount of parameters
+    print(sum(p.numel() for p in backbone.parameters() if p.requires_grad))
 
 
 
