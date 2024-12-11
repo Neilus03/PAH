@@ -104,8 +104,57 @@ class MultitaskModel_Baseline(nn.Module):
         associated to that task.
         adds the head to this baseline_lwf_model's collection of task heads."""
         self.task_heads[str(task_id)] = head.to(self.device)
-
+    
+    
     @property
     def num_task_heads(self):
         return len(self.task_heads)
 
+
+
+class MultitaskModel_Baseline_notaskid(nn.Module):
+    def __init__(self, backbone: nn.Module, 
+                 device):
+        super().__init__()
+
+        self.backbone = backbone.to(device)
+
+        # for param in self.backbone.parameters():
+        #     param.requires_grad = False
+
+        # a dict mapping task IDs to the classification heads for those tasks:
+        self.task_heads = nn.ModuleDict()        
+        # we must use a nn.ModuleDict instead of a base python dict,
+        # to ensure that the modules inside are properly registered in self.parameters() etc.
+
+        self.relu = nn.ReLU()
+        self.device = device
+        self.to(device)
+    
+
+    def forward(self, x: torch.Tensor, task_id: int):
+        if x.device != self.device:
+            x = x.to(self.device)
+        
+        # select which classifier head to use:
+        chosen_head = self.task_heads["0"]
+
+        # activated features from backbone:
+        x = self.relu(self.backbone(x))
+        # task-specific prediction:
+        x = chosen_head(x)
+
+        return x
+
+    def add_task(self, 
+                 task_id: int, 
+                 head: nn.Module):
+        """accepts an integer task_id and a classification head
+        associated to that task.
+        adds the head to this baseline_lwf_model's collection of task heads."""
+        self.task_heads[str(task_id)] = head.to(self.device)
+    
+    
+    @property
+    def num_task_heads(self):
+        return len(self.task_heads)

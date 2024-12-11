@@ -25,7 +25,7 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from networks.backbones import ResNet50, MobileNetV2, EfficientNetB0, ViT, ResNet18
-from networks.networks_baseline import MultitaskModel_Baseline, TaskHead_Baseline, TaskHead_simple
+from networks.networks_baseline import MultitaskModel_Baseline, TaskHead_Baseline, TaskHead_simple, MultitaskModel_Baseline_notaskid
 
 from utils import *
 
@@ -121,7 +121,7 @@ if config["model"]["frozen_backbone"] == True:
         param.requires_grad = False
 
 #Create model
-baseline_ewc = MultitaskModel_Baseline(backbone, device)
+baseline_ewc = MultitaskModel_Baseline_notaskid(backbone, device)
 
 logger.log(f"Model created!")
 logger.log(f"Model initialized with freeze_backbone={config['model']['frozen_backbone']}, config={config['model']}")
@@ -156,6 +156,19 @@ old_params = None
 fisher = None
 ewc_lambda = config["training"]["ewc_lambda"]
 
+task_train_num_classes = len(data['timestep_task_classes'][0]) #all tasks have the same number of classes
+
+
+task_head = TaskHead_simple(input_size=baseline_ewc.backbone.num_features, 
+                                num_classes=task_train_num_classes,
+                                device=device)
+
+baseline_ewc.add_task(0, task_head)
+
+
+optimizer.add_param_group({'params': task_head.parameters()})
+logger.log(f"Task head added. same task head will be used for all tasks")
+
 with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', config=config, group=config['logging']['group']) as run:
     #count_optimizer_parameters(optimizer, logger)
     
@@ -163,15 +176,6 @@ with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', con
     for t, (task_train, task_val) in data['timestep_tasks'].items():
         task_train.num_classes = len(data['timestep_task_classes'][t])
         logger.log(f"Task {t}: {task_train.num_classes} classes\n: {data['task_metadata'][t]}")
-        
-        if t not in baseline_ewc.task_heads:
-            task_head = TaskHead_simple(input_size=baseline_ewc.backbone.num_features, 
-                                          num_classes=task_train.num_classes,
-                                          device=device)
-            #Add task head to model
-            baseline_ewc.add_task(t, task_head)
-            optimizer.add_param_group({'params': task_head.parameters()})
-            logger.log(f"Task head added for task {t}")
             
         #Build training and validation dataloaders
         train_loader, val_loader = [utils.data.DataLoader(d,
@@ -189,7 +193,7 @@ with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', con
             for batch_idx, batch in enumerate(progress_bar):
                 x, y, task_ids = batch
                 x, y = x.to(device), y.to(device)
-                task_id = task_ids[0]
+                task_id = 0
                 
                 optimizer.zero_grad()
                 

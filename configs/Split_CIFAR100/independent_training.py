@@ -52,7 +52,7 @@ logging_config = {
     "verbose": True,  # Whether to show detailed logs for each epoch.
     "results_dir": "results/joint_training",  # Folder to save the results.
     "name": name,  # or EWC_Baseline pr SI_Baseline
-    "group": "Joint",  # Group name for the experiment.
+    "group": "Independent",  # Group name for the experiment.
 }
 
 # 6. Miscellaneous Parameters

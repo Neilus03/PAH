@@ -32,7 +32,7 @@ training_config = {
     "l2_reg": 1e-6,  # L2 regularization coefficient (currently unused).
     "temperature": 2.0,  # Temperature for distillation loss (used in knowledge distillation).
     "stability": 3,  # Stability weight for soft distillation loss.
-    "ewc_lambda": 5000,  # Lambda hyperparameter for EWC.
+    "ewc_lambda": 5e5,  # Lambda hyperparameter for EWC. The higher, the more the model will remember the previous task.
     "weight_hard_loss_prototypes": 0.2,  # Weight for the hard loss applied to the prototypes.
     "weight_soft_loss_prototypes": 0.05,  # Weight for the soft loss applied to the prototypes.
     #"freeze_backbone": False,  # Whether to freeze the backbone during training.
@@ -58,7 +58,7 @@ logging_config = {
 # 6. Miscellaneous Parameters
 # ---------------------------
 misc_config = {
-    "device": "cuda:5",  # Device for training (use "cpu" if no GPU is available).
+    "device": "cuda:2",  # Device for training (use "cpu" if no GPU is available).
     "seed": 42,  # Seed for reproducibility.
 }
 
