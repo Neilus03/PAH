@@ -9,7 +9,7 @@ from networks.metamodules import FCBlock, BatchLinear, HyperNetwork, get_subdict
 from networks.torchmeta.modules import MetaModule
 from copy import deepcopy
 
-from networks.backbones import ResNet50, MobileNetV2, EfficientNetB0, ViT, ResNet18
+from networks.backbones import ResNet50, MobileNetV2, EfficientNetB0, ViT, ResNet18, ReducedResNet18
 import random
 
 backbone_dict = {
@@ -17,7 +17,8 @@ backbone_dict = {
     'mobilenetv2': MobileNetV2,
     'efficientnetb0': EfficientNetB0,
     'vit': ViT,
-    'resnet18': ResNet18
+    'resnet18': ResNet18,
+    'reducedresnet18': ReducedResNet18
 }
 
 

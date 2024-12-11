@@ -38,7 +38,7 @@ from utils import *
 
 # Import the HyperCMTL_seq model architecture
 from networks.hypernetwork import HyperCMTL_seq_simple
-from networks.backbones import ResNet50, MobileNetV2, EfficientNetB0, ResNet18, ViT
+from networks.backbones import ResNet50, MobileNetV2, EfficientNetB0, ResNet18, ViT,ReducedResNet18
 
 # Import the wandb library for logging metrics and visualizations
 import wandb
@@ -94,7 +94,8 @@ backbone_dict = {
     'mobilenetv2': MobileNetV2,
     'efficientnetb0': EfficientNetB0,
     'resnet18': ResNet18,
-    'vit': ViT
+    'vit': ViT,
+    'reducedresnet18': ReducedResNet18
 }
 
 logger.log(f"Using backbone: {config['model']['backbone']}")
