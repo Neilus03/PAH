@@ -6,7 +6,7 @@ all_datasets = ["Split-MNIST", "Split-CIFAR100", "TinyImageNet"]
 freeze = ["False", "True"]
 models = ["Hyper" , "Hyper_prot", "Hyper2d_i", "Hyper2d"]
 models = ["EWC", "SI", "LwF"]
-backbones = ["resnet18", "mobilenetv2", "efficientnetb0", "resnet50", "reducedresnet18"]
+backbones = ["reducedresnet18"]
 
 training_files = {
     "EWC": "train_baseline_EWC.py",
