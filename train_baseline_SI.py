@@ -125,10 +125,17 @@ backbone_name = config["model"]["backbone"]
 
 backbone = backbone_dict[backbone_name](device=device, pretrained=True)
 logger.log(f"Using backbone: {backbone_name}")
-
 if config["model"]["frozen_backbone"] == True:
-    for param in backbone.parameters():
-        param.requires_grad = False
+    for name, param in backbone.named_parameters():
+        #freeze only x% of the backbone
+        random_number = random.random()
+        freeze_percentage = config["training"]["freezing_percentage"] if "freezing_percentage" in config["training"] else 1.0
+        if random_number < freeze_percentage:
+            param.requires_grad = False
+        else:
+            param.requires_grad = True
+        
+logger.log(f"Optimizable parameters of the backbone: {sum(p.numel() for p in backbone.parameters() if p.requires_grad)} out of {sum(p.numel() for p in backbone.parameters())}")
 
 # Create model
 baseline_si = MultitaskModel_Baseline_notaskid(backbone, device)
