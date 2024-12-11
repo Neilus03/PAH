@@ -71,8 +71,8 @@ def objective(trial):
     # Sample hyperparameters from Optuna
     lr = trial.suggest_float('lr', 1e-5, 1e-3, log=True)  # Learning rate
     seed = trial.suggest_int('seed', 0, 1000)  # Random seed
-    temperature = trial.suggest_float('temperature', 0.5, 3.0)  # distillation temperature
-    stability = trial.suggest_float('stability', 0.0, 5.0)  # stability parameter for soft loss
+    temperature = trial.suggest_float('temperature', 2.0, 7.0)  # distillation temperature
+    stability = trial.suggest_float('stability', 0.5, 5.0)  # stability parameter for soft loss
     task_head_projection_size = trial.suggest_int('task_head_projection_size', 128, 1024, step=128)
     hyper_hidden_features = trial.suggest_int('hyper_hidden_features', 128, 512, step=64)
     hyper_hidden_layers = trial.suggest_int('hyper_hidden_layers', 2, 12, step=1)
