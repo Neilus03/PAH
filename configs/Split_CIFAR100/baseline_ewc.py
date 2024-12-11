@@ -38,7 +38,7 @@ training_config = {
     #"freeze_backbone": False,  # Whether to freeze the backbone during training.
     "backbone": "resnet50",  # to choose from resnet50, mobilenetv2, efficientnetb0
     "optimizer": "AdamW",  # Optimizer used for training. AdamW is used here.
-    "freezing_percentage": 0.5,  # Percentage of the total number of epochs where the backbone is frozen.
+    "freezing_percentage": 1.0,  # Percentage of the total number of epochs where the backbone is frozen.
 }
 
 # 5. Logging and Visualization Parameters
