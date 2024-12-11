@@ -19,9 +19,9 @@ dataset_config = {
 # 2. Model Hyperparameters
 # ------------------------
 model_config = {
-    "backbone": "mobilenetv2",  # Backbone architecture used for the model (e.g., "resnet50").
+    "backbone": "resnet50",  # Backbone architecture used for the model (e.g., "resnet50").
     "task_head_projection_size": 512,  # The size of the task-specific projection layer.}
-    "frozen_backbone": False,  # Whether to freeze the backbone during training.
+    "frozen_backbone": True,  # Whether to freeze the backbone during training.
 }
 
 # 3. Training Parameters
@@ -32,12 +32,13 @@ training_config = {
     "l2_reg": 1e-6,  # L2 regularization coefficient (currently unused).
     "temperature": 2.0,  # Temperature for distillation loss (used in knowledge distillation).
     "stability": 3,  # Stability weight for soft distillation loss.
-    "ewc_lambda": 5e5,  # Lambda hyperparameter for EWC. The higher, the more the model will remember the previous task.
+    "ewc_lambda": 3e7,  # Lambda hyperparameter for EWC. The higher, the more the model will remember the previous task.
     "weight_hard_loss_prototypes": 0.2,  # Weight for the hard loss applied to the prototypes.
     "weight_soft_loss_prototypes": 0.05,  # Weight for the soft loss applied to the prototypes.
     #"freeze_backbone": False,  # Whether to freeze the backbone during training.
-    "backbone": "mobilenetv2",  # to choose from resnet50, mobilenetv2, efficientnetb0
+    "backbone": "resnet50",  # to choose from resnet50, mobilenetv2, efficientnetb0
     "optimizer": "AdamW",  # Optimizer used for training. AdamW is used here.
+    "freezing_percentage": 0.5,  # Percentage of the total number of epochs where the backbone is frozen.
 }
 
 # 5. Logging and Visualization Parameters
@@ -58,7 +59,7 @@ logging_config = {
 # 6. Miscellaneous Parameters
 # ---------------------------
 misc_config = {
-    "device": "cuda:2",  # Device for training (use "cpu" if no GPU is available).
+    "device": "cuda:0",  # Device for training (use "cpu" if no GPU is available).
     "seed": 42,  # Seed for reproducibility.
 }
 
