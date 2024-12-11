@@ -277,7 +277,7 @@ with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', con
                         prev_accs_prot = prev_test_accs_prot,
                         show_taskwise_accuracy=True, 
                         baseline_taskwise_accs = None, 
-                        model_name= 'HyperCMTL_seq + LwF', 
+                        model_name= 'Hyper2d-join', 
                         verbose=True, 
                         batch_size=config['dataset']['BATCH_SIZE'],
                         results_dir=results_dir,

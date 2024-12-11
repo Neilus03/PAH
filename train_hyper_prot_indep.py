@@ -132,23 +132,6 @@ with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', con
         # Initialize optimizer and loss function:
         opt = torch.optim.AdamW(model.get_optimizer_list())
 
-        extra_ds_train = []
-        extra_ds_val = []
-        for i in range(t+1):
-            task_train_i, task_val_i = data['timestep_tasks'][i]
-            task_train_i.num_classes = len(data['timestep_task_classes'][i])
-            logger.log(f"Task {t}: {task_train_i.num_classes} classes\n: {data['task_metadata'][i]}")
-            
-            extra_ds_train.append(task_train_i)
-            extra_ds_val.append(task_val_i)
-        
-        if t != 0:
-            # Concatenate the training and validation sets
-            task_train = ConcatDataset(extra_ds_train)
-            task_val = extra_ds_val[-1]
-        else:
-            task_train, task_val = extra_ds_train[0], extra_ds_val[0]
-
         # Criterion for the loss function
         loss_fn = nn.CrossEntropyLoss()
         
@@ -272,7 +255,7 @@ with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', con
                             multitask_model=model,
                             selected_test_sets=data['task_test_sets'][t:t+1],
                             task_test_sets=data['task_test_sets'],
-                            model_name=f'hyper-prot-joint at t={t}',
+                            model_name=f'hyper-prot-indep at t={t}',
                             prev_accs=prev_test_accs,
                             results_dir=results_dir,
                             task_id=t,
