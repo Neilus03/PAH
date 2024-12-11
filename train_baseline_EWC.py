@@ -117,8 +117,16 @@ backbone = backbone_dict[backbone_name](device=device, pretrained=True)
 logger.log(f"Using backbone: {backbone_name}")
 
 if config["model"]["frozen_backbone"] == True:
-    for param in backbone.parameters():
-        param.requires_grad = False
+    for name, param in backbone.named_parameters():
+        print(name)
+        #freeze only x% of the backbone
+        random_number = random.random()
+        if random_number < config["training"]["freezing_percentage"]:
+            param.requires_grad = False
+        else:
+            param.requires_grad = True
+        
+logger.log(f"Optimizable parameters of the backbone: {sum(p.numel() for p in backbone.parameters() if p.requires_grad)} out of {sum(p.numel() for p in backbone.parameters())}")
 
 #Create model
 baseline_ewc = MultitaskModel_Baseline_notaskid(backbone, device)
@@ -276,6 +284,7 @@ with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', con
         baseline_ewc.eval()
         old_params = {n: p.clone().detach() for n, p in baseline_ewc.named_parameters() if p.requires_grad}
         fisher = compute_fisher(baseline_ewc, train_loader, device, sample_size=200)
+        baseline_ewc.train()
             
     #Log final metrics
     logger.log(f"Task {t} completed!")
