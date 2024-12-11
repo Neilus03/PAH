@@ -351,6 +351,7 @@ def evaluate_model_timed(multitask_model: nn.Module,  # trained model capable of
                    loss_fn: nn.modules.loss._Loss = nn.CrossEntropyLoss(),
                    device = None,
                    prototypes = None,
+                   joint_training = False
                   ):
     """
     Evaluates the model on a validation dataset.
@@ -376,10 +377,9 @@ def evaluate_model_timed(multitask_model: nn.Module,  # trained model capable of
             start_time = time.time()
             
             # Forward pass with task-specific parameters
-            if prototypes is not None:
-                vpred = multitask_model(vx, prototypes, task_ids[0])
-            else:
-                vpred = multitask_model(vx, task_ids[0])
+            task_id = 0 if joint_training else task_ids[0]
+            vpred = multitask_model(vx, prototypes, task_id) if prototypes is not None else multitask_model(vx, task_id)
+                
                 
             time_inf.append(time.time() - start_time)
 

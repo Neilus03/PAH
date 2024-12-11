@@ -8,9 +8,9 @@ root = os.path.dirname(os.path.abspath(__file__))
 # 1. Dataset Parameters
 # ----------------------
 dataset_config = {
-    "dataset": "TinyImageNet",  # Dataset used for training. You can switch to "Split-MNIST" or other datasets.
-    "NUM_TASKS": 10,  # Number of tasks for the dataset. Typically 5 for Split-MNIST and 10 for Split-CIFAR100.
-    "BATCH_SIZE": 32,  # Batch size used during training.
+    "dataset": "NAME-DATASET",  # Dataset used for training. You can switch to "Split-MNIST" or other datasets.
+    "NUM_TASKS": NUM_TASKS_VAR,  # Number of tasks for the dataset. Typically 5 for Split-MNIST and 10 for Split-CIFAR100.
+    "BATCH_SIZE": 256,  # Batch size used during training.
     "VAL_FRAC": 0.1,  # Fraction of the dataset to be used for validation.
     "TEST_FRAC": 0.1,  # Fraction of the dataset to be used for testing.
     'data_dir': os.path.join(root, 'data')
@@ -19,9 +19,9 @@ dataset_config = {
 # 2. Model Hyperparameters
 # ------------------------
 model_config = {
-    "backbone": "efficientnetb0",  # Backbone architecture used for the model (e.g., "resnet50").
+    "backbone": "BACKBONE",  # Backbone architecture used for the model (e.g., "resnet50").
     "task_head_projection_size": 512,  # The size of the task-specific projection layer.}
-    "frozen_backbone": False,  # Whether to freeze the backbone during training.
+     "frozen_backbone": FREEZE_BKBN,  # Whether to freeze the backbone during training.
 }
 
 # 3. Training Parameters
@@ -35,29 +35,30 @@ training_config = {
     "weight_hard_loss_prototypes": 0.2,  # Weight for the hard loss applied to the prototypes.
     "weight_soft_loss_prototypes": 0.05,  # Weight for the soft loss applied to the prototypes.
     #"freeze_backbone": False,  # Whether to freeze the backbone during training.
-    "backbone": "efficientnetb0",  # to choose from resnet50, mobilenetv2, efficientnetb0
+    "backbone": "BACKBONE",  # Backbone architecture used for the model (e.g., "resnet50").
     "optimizer": "AdamW",  # Optimizer used for training. AdamW is used here.
 }
 
 # 5. Logging and Visualization Parameters
 # ---------------------------------------
 frozen = "frozen" if model_config["frozen_backbone"] else ""
-name = f"LwF baseline-{frozen}-{model_config['backbone']}-{dataset_config['dataset']}"
+#name = f"LwF baseline-{frozen}-{model_config['backbone']}-{dataset_config['dataset']}"
+name = f"Joint training baseline-{frozen}-{model_config['backbone']}-{dataset_config['dataset']}"
 logging_config = {
     "log_file": "training.log",  # Log file where training information will be saved.
     "log_level": "INFO",  # Logging level for the training process (can be INFO, DEBUG, etc.).
     "plot_training": True,  # Whether to plot the training curves.
     "show_progress": True,  # Whether to show progress bars during training.
     "verbose": True,  # Whether to show detailed logs for each epoch.
-    "results_dir": "results",  # Folder to save the results.
+    "results_dir": "results/joint_training",  # Folder to save the results.
     "name": name,  # or EWC_Baseline pr SI_Baseline
-    "group": "LwF",  # Group name for the experiment.
+    "group": "Joint",  # Group name for the experiment.
 }
 
 # 6. Miscellaneous Parameters
 # ---------------------------
 misc_config = {
-    "device": "cuda:5",  # Device for training (use "cpu" if no GPU is available).
+    "device": "cuda:0",  # Device for training (use "cpu" if no GPU is available).
     "seed": 42,  # Seed for reproducibility.
 }
 

@@ -4,7 +4,7 @@ from time import sleep
 import threading
 
 # Define your datasets, freeze options, models, and devices
-all_datasets = ["TinyImageNet"]
+all_datasets = ["TinyImageNet", "Split-MNIST", "Split-CIFAR100"]
 freeze = ["False", "True"]
 models = ["EWC", "SI", "LwF"]
 devices = ["0", "1", "2", "3", "4", "5"]
