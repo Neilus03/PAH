@@ -70,7 +70,7 @@ backbone_dict = {
 }
 
 backbone_name = config["model"]["backbone"]
-backbone = backbone_dict[backbone_name](device=config["misc"]["device"], pretrained=True)
+backbone = backbone_dict[backbone_name](device=config["misc"]["device"], pretrained=False)
 logger.log(f"Using backbone: {backbone_name}")
 
 # Freeze backbone if specified

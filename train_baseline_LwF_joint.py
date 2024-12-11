@@ -101,7 +101,7 @@ with wandb.init(project='HyperCMTL', entity='pilligua2', name=f'{name_run}', con
     t = 0
     # Outer loop for each task, in sequence
     for t in range(config["dataset"]["NUM_TASKS"]):
-        backbone = backbone_dict[backbone_name](device=device, pretrained=True)
+        backbone = backbone_dict[backbone_name](device=device, pretrained=False)
         logger.log(f"Using backbone: {backbone_name}")
 
         if config["model"]["frozen_backbone"] == True:

@@ -6,7 +6,7 @@ import threading
 # Define your datasets, freeze options, models, and devices
 all_datasets = ["TinyImageNet", "Split-MNIST", "Split-CIFAR100"]
 freeze = ["False", "True"]
-models = ["EWC", "SI", "LwF"]
+models = ["EWC", "SI"]
 devices = ["0", "1", "2", "3", "4", "5"]
 backbones = ["resnet18", "mobilenetv2", "efficientnetb0", "resnet50"]
 # Mapping of models to their corresponding training and config files

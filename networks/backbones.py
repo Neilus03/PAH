@@ -41,7 +41,7 @@ class ResNet50(nn.Module):
         return [{'params': self.feature_extractor.parameters(), 'lr': 1e-4}]
 
 class ResNet18(nn.Module):
-    def __init__(self, pretrained=True, device="cuda"):
+    def __init__(self, pretrained=False, device="cuda"):
         super().__init__()
 
         # Load pretrained ResNet-50

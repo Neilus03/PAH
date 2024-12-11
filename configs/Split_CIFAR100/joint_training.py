@@ -27,7 +27,7 @@ model_config = {
 # 3. Training Parameters
 # -----------------------
 training_config = {
-    "epochs_per_timestep": 12,  # Number of epochs per timestep (task).
+    "epochs_per_timestep": 100,  # Number of epochs per timestep (task).
     "lr": 1e-4,  # Learning rate for the optimizer (can be tuned via Optuna).
     "l2_reg": 1e-6,  # L2 regularization coefficient (currently unused).
     "temperature": 2.0,  # Temperature for distillation loss (used in knowledge distillation).
