@@ -883,6 +883,130 @@ def test_evaluate(multitask_model: nn.Module,
 
     return task_test_accs
 
+
+# Evaluate the model on the test sets of all tasks
+def test_evaluate_metrics(multitask_model: nn.Module, 
+                  selected_test_sets,  
+                  task_test_sets, 
+                  prev_accs = None,
+                  show_taskwise_accuracy=True, 
+                  baseline_taskwise_accs = None, 
+                  model_name: str='', 
+                  verbose=False, 
+                  batch_size=16,
+                  results_dir="",
+                  task_id=0,
+                  task_metadata=None,
+                  device=None,
+                  task_prototypes = None
+                 ):
+    """
+    Evaluates the model on all selected test sets and optionally displays results.
+    Args:
+        multitask_model (nn.Module): The trained multitask model to evaluate.
+        selected_test_sets (list[Dataset]): List of test datasets for each task.
+        prev_accs (list[list[float]], optional): Previous accuracies for tracking forgetting.
+        show_taskwise_accuracy (bool, optional): If True, plots a bar chart of taskwise accuracies.
+        baseline_taskwise_accs (list[float], optional): Baseline accuracies for comparison.
+        model_name (str, optional): Name of the model to show in plots. Default is ''.
+        verbose (bool, optional): If True, prints detailed evaluation results. Default is False.
+    Returns:
+        list[float]: Taskwise accuracies for the selected test sets.
+    """
+    metrics = {}
+    
+    print(f'{model_name} evaluation on test set of all tasks:'.capitalize())
+
+    task_test_losses = []
+    task_test_accs = []
+    task_test_times = []
+
+    # Iterate over each task's test dataset
+    for t, test_data in enumerate(selected_test_sets):
+        # Create a DataLoader for the current task's test dataset
+        test_loader = utils.data.DataLoader(test_data,
+                                       batch_size=batch_size,
+                                       shuffle=True)
+
+        prototypes = None
+        if task_prototypes is not None:
+            prototypes = task_prototypes[t].to(device)
+
+        # Evaluate the model on the current task
+        _, task_test_acc, time = evaluate_model_timed(multitask_model, test_loader, device=device, prototypes = prototypes)
+
+        print(f'{task_metadata[t]}: {task_test_acc:.2%} in {time:.2f} seconds')
+
+        task_test_accs.append(task_test_acc)
+        task_test_times.append(time)
+
+    # print(task_test_times)
+    metrics['task_test_accs'] = task_test_accs        
+    AA = np.mean(task_test_accs)
+    metrics['AA'] = AA
+    
+    if t > 0:
+        FM, BWT = compute_FM_BWT(task_test_accs, prev_accs)
+        metrics['FM'] = FM
+        metrics['BWT'] = BWT
+    else:
+        FM = 0
+        BWT = 0
+        metrics['FM'] = FM
+        metrics['BWT'] = BWT
+    
+    Num_params = sum(p.numel() for p in multitask_model.parameters())
+    Time_inf = np.mean(task_test_times)
+    metrics['Num_params'] = Num_params
+    metrics['Time_inf'] = Time_inf
+    
+    print(f'\n +++ AA: {AA:.2%}, FM: {FM:.2%}, BWT: {BWT:.2%}, Num_params: {Num_params}, Time_inf: {Time_inf:.2f} +++ ')
+
+    # Plot taskwise accuracy if enabled
+    if show_taskwise_accuracy:
+        bar_heights = task_test_accs + [0]*(len(task_test_sets) - len(selected_test_sets))
+        # display bar plot with accuracy on each evaluation task
+        plt.bar(x = range(len(task_test_sets)), height=bar_heights, zorder=1)
+
+        plt.xticks(
+        range(len(task_test_sets)),
+        [','.join(task_classes.values()) for t, task_classes in task_metadata.items()],
+        rotation='vertical'
+        )
+
+        plt.axhline(AA, c=[0.4]*3, linestyle=':')
+        plt.text(0, AA+0.002, f'{model_name} (average)', c=[0.4]*3, size=8)
+
+        if prev_accs is not None:
+            # plot the previous step's accuracies on top
+            # (will show forgetting in red)
+            for p, prev_acc_list in enumerate(prev_accs):
+                plt.bar(x = range(len(prev_acc_list)), height=prev_acc_list, fc='tab:red', zorder=0, alpha=0.5*((p+1)/len(prev_accs)))
+
+        if baseline_taskwise_accs is not None:
+            for t, acc in enumerate(baseline_taskwise_accs):
+                plt.plot([t-0.5, t+0.5], [acc, acc], c='black', linestyle='--')
+
+            # show average as well:
+            baseline_avg = np.mean(baseline_taskwise_accs)
+            plt.axhline(baseline_avg, c=[0.6]*3, linestyle=':')
+            plt.text(0, baseline_avg+0.002, 'baseline average', c=[0.6]*3, size=8)
+
+        plt.ylim([0, 1])
+        #plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+        # Save figure to wandb
+        file_path = os.path.join(results_dir, f'taskwise_accuracy_task_{task_id}.png')
+        plt.savefig(file_path)
+        sleep(1)
+        img = Image.open(file_path)
+        wandb.log({f'taskwise accuracy': wandb.Image(img), 'task': task_id})
+
+        plt.close()
+
+    return metrics
+
+
 # Evaluate the model on the test sets of all tasks
 def test_evaluate_metrics(multitask_model: nn.Module, 
                   selected_test_sets,  
