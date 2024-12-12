@@ -75,27 +75,31 @@ class ResNet18(nn.Module):
         return [{'params': self.feature_extractor.parameters(), 'lr': 1e-4}]   
 
 class ReducedResNet18(nn.Module):
-    def __init__(self, pretrained=False, device="cuda"):
+    def __init__(self, pretrained=True, device="cuda"):
         super().__init__()
 
         # Load the standard ResNet-18 model
         resnet = resnet18(pretrained=pretrained)
-        
+
         # Modify the convolutional layers to reduce feature maps
         resnet.conv1 = nn.Conv2d(3, 64 // 3, kernel_size=7, stride=2, padding=3, bias=False)
         resnet.bn1 = nn.BatchNorm2d(64 // 3)
-        
+
         # Adjust the number of feature maps in each block
         self.feature_extractor = nn.Sequential(
-            nn.Sequential(*self._reduce_layer(resnet.layer1, 64 // 3, 64 // 3)),
-            nn.Sequential(*self._reduce_layer(resnet.layer2, 64 // 3, 128 // 3, stride=2)),
-            nn.Sequential(*self._reduce_layer(resnet.layer3, 128 // 3, 256 // 3, stride=2)),
-            nn.Sequential(*self._reduce_layer(resnet.layer4, 256 // 3, 512 // 3, stride=2)),
+            resnet.conv1,
+            resnet.bn1,
+            resnet.relu,
+            resnet.maxpool,
+            self._reduce_layer(resnet.layer1, 64 // 3, 64 // 3),
+            self._reduce_layer(resnet.layer2, 64 // 3, 128 // 3, stride=2),
+            self._reduce_layer(resnet.layer3, 128 // 3, 256 // 3, stride=2),
+            self._reduce_layer(resnet.layer4, 256 // 3, 512 // 3, stride=2),
         )
 
         # Add adaptive average pooling to reduce feature maps to 1x1
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
-        
+
         # Set the number of output features
         self.num_features = 512 // 3
         self.device = device
@@ -104,27 +108,35 @@ class ReducedResNet18(nn.Module):
     def _reduce_layer(self, layer, in_channels, out_channels, stride=1):
         modified_blocks = []
         for block in layer:
+            # Modify the convolutional layers in the block
             block.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
             block.bn1 = nn.BatchNorm2d(out_channels)
             block.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
             block.bn2 = nn.BatchNorm2d(out_channels)
-            if block.downsample is not None:
+            
+            # Adjust the downsample layer to match dimensions
+            if block.downsample is not None or in_channels != out_channels or stride != 1:
                 block.downsample = nn.Sequential(
                     nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
                     nn.BatchNorm2d(out_channels),
                 )
+            
             modified_blocks.append(block)
-            in_channels = out_channels
-        return modified_blocks
+            in_channels = out_channels  # Update in_channels for the next block
+        return nn.Sequential(*modified_blocks)
 
     def forward(self, x):
+        # print("x.shape", x.shape)  # Check input shape
         x = self.feature_extractor(x)
         x = self.pool(x)
+        # print("x.shape after pool", x.shape)  # Check shape after pooling
         x = x.view(x.size(0), -1)
+        # print("x.shape after flatten", x.shape)  # Check final shape
         return x
-    
+
     def get_optimizer_list(self):
         return [{'params': self.feature_extractor.parameters(), 'lr': 1e-4}]
+
 
 
 

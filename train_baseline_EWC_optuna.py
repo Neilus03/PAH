@@ -122,8 +122,16 @@ def objective(trial):
     log.log(f"Using backbone: {backbone_name}")
 
     if config["model"]["frozen_backbone"] == True:
-        for param in backbone.parameters():
-            param.requires_grad = False
+        freezing_percentage = trial.suggest_float('freezing_percentage', 0.1, 1.0)
+        for name, param in backbone.named_parameters():
+            print(name)
+            #freeze only x% of the backbone
+            random_number = random.random()
+            if random_number < freezing_percentage:
+                param.requires_grad = False
+            else:
+                param.requires_grad = True
+        
 
     #Create model
     baseline_ewc = MultitaskModel_Baseline_notaskid(backbone, device)
@@ -188,7 +196,7 @@ def objective(trial):
                                             shuffle=True) for d in (task_train, task_val)]
             
             #Inner loop for training epochs over the current task
-            for e in range(1): #config['training']['epochs_per_timestep']):
+            for e in range(config['training']['epochs_per_timestep']):
                 epoch_train_losses, epoch_train_accs = [], []
                 epoch_soft_losses = [] # Not used for EWC, but retained for consistency
                 
@@ -291,8 +299,10 @@ def objective(trial):
 
 if __name__=="__main__":
     study = optuna.create_study(direction="maximize")
-    study.optimize(objective, n_trials=2)
+    study.optimize(objective, n_trials=20)
     
+    os.makedirs('results/EWC', exist_ok=True)
+
     # save figures and plot for the optuna study
     plot_optimization_history(study).write_image('results/EWC/optuna_study.png')
     plot_param_importances(study).write_image('results/EWC/optuna_params.png')
