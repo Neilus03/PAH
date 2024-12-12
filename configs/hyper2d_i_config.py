@@ -30,7 +30,7 @@ lr_config = {
 # 2. Model Hyperparameters
 # ------------------------
 model_config = {
-    "backbone": "reducedresnet18",  # Backbone architecture used for the model (e.g., "resnet50").
+    "backbone": "resnet18",  # Backbone architecture used for the model (e.g., "resnet50").
     "hyper_hidden_features": 1024,
     "hyper_hidden_layers": 6,
     "frozen_backbone": False,  # Whether to freeze the backbone during training.
@@ -45,7 +45,7 @@ model_config = {
 # 3. Training Parameters
 # -----------------------
 training_config = {
-    "epochs_per_timestep": 100,  # Number of epochs per timestep (task).
+    "epochs_per_timestep": 20,  # Number of epochs per timestep (task).
     "temperature": 2.0,  # Temperature for distillation loss (used in knowledge distillation).
     "stability": 3,  # Stability weight for soft distillation loss.
     "weight_hard_loss_prototypes": 0.2,  # Weight for the hard loss applied to the prototypes.

@@ -4,10 +4,13 @@ import torch.nn.functional as F
 from torchvision.models import resnet50, mobilenet_v2, resnet18, alexnet
 import timm  # For EfficientNet and other models
 from timm import create_model  # For ViT and other models from the "timm" library
+from utils import config_load
+import sys
 
+config = config_load(sys.argv[1])["config"]
 
 class ResNet50(nn.Module):
-    def __init__(self, pretrained=True, device="cuda"):
+    def __init__(self, pretrained=config['model']['pretrained'], device="cuda"):
         super().__init__()
 
         # Load pretrained ResNet-50
@@ -41,7 +44,7 @@ class ResNet50(nn.Module):
         return [{'params': self.feature_extractor.parameters(), 'lr': 1e-4}]
 
 class ResNet18(nn.Module):
-    def __init__(self, pretrained=False, device="cuda"):
+    def __init__(self, pretrained=config['model']['pretrained'], device="cuda"):
         super().__init__()
 
         # Load pretrained ResNet-50
@@ -75,7 +78,7 @@ class ResNet18(nn.Module):
         return [{'params': self.feature_extractor.parameters(), 'lr': 1e-4}]   
 
 class ReducedResNet18(nn.Module):
-    def __init__(self, pretrained=True, device="cuda"):
+    def __init__(self, pretrained=config['model']['pretrained'], device="cuda"):
         super().__init__()
 
         # Load the standard ResNet-18 model
@@ -136,12 +139,10 @@ class ReducedResNet18(nn.Module):
 
     def get_optimizer_list(self):
         return [{'params': self.feature_extractor.parameters(), 'lr': 1e-4}]
-
-
-
+    
 
 class MobileNetV2(nn.Module):
-    def __init__(self, pretrained=True, device="cuda"):
+    def __init__(self, pretrained=config['model']['pretrained'], device="cuda"):
         super().__init__()
 
         # Load pretrained MobileNetV2
@@ -174,7 +175,7 @@ class MobileNetV2(nn.Module):
         return [{'params': self.feature_extractor.parameters(), 'lr': 1e-4}]
 
 class EfficientNetB0(nn.Module):
-    def __init__(self, pretrained=True, device="cuda"):
+    def __init__(self, pretrained=config['model']['pretrained'], device="cuda"):
         super().__init__()
 
         # Use the timm library to load EfficientNetB0
@@ -196,22 +197,38 @@ class EfficientNetB0(nn.Module):
 
 
 class AlexNet(nn.Module):
-    def __init__(self, pretrained=True, device="cuda"):
+    def __init__(self, pretrained=config['model']['pretrained'], device="cuda"):
         super().__init__()
-
+        print("Pretrained:", pretrained)
         # Load pretrained AlexNet
         alexnet_ = alexnet(pretrained=pretrained)
-        # Remove the fully connected layer and retain only the convolutional backbone
+        
+        # Modify the feature extractor to handle smaller inputs
         self.feature_extractor = nn.Sequential(
-            *(list(alexnet_.children())[:-2])  # Removes FC and avg pooling
+            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1),  # Smaller kernel and stride
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # Reduce dimensions by half
+            
+            nn.Conv2d(64, 192, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # Reduce dimensions by half
+            
+            nn.Conv2d(192, 384, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            
+            nn.Conv2d(384, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # Reduce dimensions by half
         )
         
         # Add adaptive average pooling to reduce feature maps to 1x1
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
         
         # Set the number of output features (256 for AlexNet)
-        self.num_features = alexnet_.classifier[6].in_features
-        #print(self.num_features)
+        self.num_features = 256
 
         self.device = device
         self.to(device)
@@ -219,19 +236,18 @@ class AlexNet(nn.Module):
     def forward(self, x):
         # Pass through AlexNet backbone
         x = self.feature_extractor(x)
-        #print(x.shape)
         # Global average pooling to get feature vector
         x = self.pool(x)
         x = x.view(x.size(0), -1)
-
         return x
-    
+
     def get_optimizer_list(self):
         # Add a lower learning rate for the pretrained parameters
         return [{'params': self.feature_extractor.parameters(), 'lr': 1e-4}]
 
+
 class ViT(nn.Module):
-    def __init__(self, pretrained=True, device="cuda"):
+    def __init__(self, pretrained=config['model']['pretrained'], device="cuda"):
         super().__init__()
 
         # Load pretrained Vision Transformer

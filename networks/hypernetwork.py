@@ -11,6 +11,10 @@ from copy import deepcopy
 
 from networks.backbones import ResNet50, AlexNet, MobileNetV2, EfficientNetB0, ViT, ResNet18, ReducedResNet18
 import random
+from utils import config_load
+import sys
+
+config = config_load(sys.argv[1])["config"]
 
 backbone_dict = {
     'resnet50': ResNet50,
@@ -445,7 +449,7 @@ class HyperCMTL_seq_simple(nn.Module):
 
         # Backbone
         if self.backbone_name in backbone_dict:
-            self.backbone = backbone_dict[self.backbone_name](device=device, pretrained=True)
+            self.backbone = backbone_dict[self.backbone_name](device=device, pretrained=config["model"]["pretrained"])
         else: 
             raise ValueError(f"Backbone {self.backbone_name} is not supported.")
         

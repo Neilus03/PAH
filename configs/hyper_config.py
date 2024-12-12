@@ -31,6 +31,7 @@ lr_config = {
 # ------------------------
 model_config = {
     "backbone": "alexnet",  # Backbone architecture used for the model (e.g., "resnet50").
+    "pretrained": False,
     "hyper_hidden_features": 1024,
     "hyper_hidden_layers": 6,
     "frozen_backbone": False,  # Whether to freeze the backbone during training.
@@ -43,7 +44,7 @@ model_config = {
 # 3. Training Parameters
 # -----------------------
 training_config = {
-    "epochs_per_timestep": 100,  # Number of epochs per timestep (task).
+    "epochs_per_timestep": 30,  # Number of epochs per timestep (task).
     "temperature": 2.0,  # Temperature for distillation loss (used in knowledge distillation).
     "stability": 3,  # Stability weight for soft distillation loss.
     "weight_hard_loss_prototypes": 0.2,  # Weight for the hard loss applied to the prototypes.
@@ -56,7 +57,8 @@ training_config = {
 # 5. Logging and Visualization Parameters
 # ---------------------------------------
 frozen = "frozen" if model_config["frozen_backbone"] else ""
-name = f"Hyper-{frozen}-{model_config['backbone']}-{dataset_config['dataset']}"
+pretrained = "pretrained" if model_config["pretrained"] else ""
+name = f"Hyper-{frozen}-{pretrained}-{model_config['backbone']}-{dataset_config['dataset']}"
 logging_config = {
     "log_file": "training.log",  # Log file where training information will be saved.
     "log_level": "INFO",  # Logging level for the training process (can be INFO, DEBUG, etc.).
