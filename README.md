@@ -1,1 +1,1 @@
-# Prototype-Augmented Hypernetworks for Scalable Continual Multitask Learning
+# Prototype-Augmented Hypernetworks for Continual Multitask Learning
