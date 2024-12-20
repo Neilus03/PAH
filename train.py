@@ -1,6 +1,6 @@
 import os
 from time import sleep
-import wandb
+import wandb 
 
 all_datasets = ["Split-MNIST", "Split-CIFAR100", "TinyImageNet"]
 freeze = ["False", "True"]
