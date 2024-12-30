@@ -1,6 +1,6 @@
 # Prototype-Augmented Hypernetworks for Continual Multitask Learning
 
-
+ 
 This repository contains the code and experiments for **Prototype-Augmented Hypernetworks (PAH)**, a method aimed at continual multitask learning without large memory overhead or replay buffers.
 
 ## What Is PAH?
